@@ -19,9 +19,9 @@ export const SAINT_IMAGES = {
   'grade-1': grade1Image,  // الشهيد كرياكوس وأمه يوليطه
   'grade-2': grade2Image,  // الشهيد أبي سيفين والأم إيريني
   'grade-3': grade3Image,  // الأنبا بولا والأنبا أنطونيوس
-  'grade-4': grade4Image,  // الشهيد مارمينا والبابا كيرلس السادس
+  'grade-4': grade6Image,  // الشهيد مارمينا والبابا كيرلس السادس (تم تبديل الصورة صح مع سنة 6)
   'grade-5': grade5Image,  // الشهيد مارجرجس والشهيدة مارينا
-  'grade-6': grade6Image,  // العذراء مريم والأنبا هدرا الأسواني
+  'grade-6': grade4Image,  // العذراء مريم والأنبا هدرا الأسواني (تم تبديل الصورة صح مع سنة 4)
 };
 
 export default SAINT_IMAGES;
