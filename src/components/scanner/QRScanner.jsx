@@ -59,7 +59,15 @@ export default function QRScanner({ onScanSuccess }) {
               fps: 10,
               qrbox: { width: 250, height: 250 },
               aspectRatio: 1.0,
-              showTorchButtonIfSupported: true
+              showTorchButtonIfSupported: true,
+              // Ask for the rear/back camera by default (QR scanning is done
+              // by pointing the phone at someone else's card, not a selfie).
+              // "ideal" (not "exact") so it still falls back gracefully on a
+              // laptop with only a front-facing webcam instead of failing.
+              videoConstraints: {
+                facingMode: { ideal: "environment" },
+                aspectRatio: 1.0
+              }
             },
             /* verbose= */ false
           );
