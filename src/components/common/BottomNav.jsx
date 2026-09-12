@@ -1,0 +1,124 @@
+import React from 'react';
+import { Trophy, Award, Gift, QrCode, CalendarCheck, Users, User } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+
+export default function BottomNav({ activeTab, setActiveTab }) {
+  const { role } = useAuth();
+
+  return (
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200 shadow-lg px-2 py-1.5 dir-rtl transition-colors duration-300">
+      <div className="flex items-center justify-around">
+        
+        {/* SERVANT / CLASS ADMIN MOBILE NAV */}
+        {(role === 'class_admin' || role === 'assistant_admin' || role === 'servant') && (
+          <>
+            <button
+              onClick={() => setActiveTab('servant-leaderboard')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'servant-leaderboard' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Trophy className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">الصدارة</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('servant-manual-points')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'servant-manual-points' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Award className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">إضافة نقاط</span>
+            </button>
+
+            {/* Quick QR Scan Action Button */}
+            <button
+              onClick={() => setActiveTab('scanner')}
+              className="w-12 h-12 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-sky-600/40 -mt-6 border-4 border-white transition-transform active:scale-95"
+            >
+              <QrCode className="w-6 h-6" />
+            </button>
+
+            <button
+              onClick={() => setActiveTab('servant-shop')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'servant-shop' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Gift className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">الهدايا</span>
+            </button>
+          </>
+        )}
+
+        {/* SUPER ADMIN MOBILE NAV */}
+        {role === 'super_admin' && (
+          <>
+            <button
+              onClick={() => setActiveTab('admin-analytics')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'admin-analytics' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Trophy className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">الإحصائيات</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('admin-efteqad')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'admin-efteqad' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <CalendarCheck className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">الافتفاد</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('admin-gifts')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'admin-gifts' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Gift className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">المخزون</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('admin-users')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'admin-users' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Users className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">المستخدمين</span>
+            </button>
+          </>
+        )}
+
+        {/* STUDENT MOBILE NAV */}
+        {role === 'student' && (
+          <>
+            <button
+              onClick={() => setActiveTab('student-card')}
+              className={`flex flex-col items-center py-1 px-4 rounded-xl transition-all ${
+                activeTab === 'student-card' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <User className="w-5 h-5 mb-0.5" />
+              <span className="text-[11px]">الكارت الرقمي</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('student-history')}
+              className={`flex flex-col items-center py-1 px-4 rounded-xl transition-all ${
+                activeTab === 'student-history' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <CalendarCheck className="w-5 h-5 mb-0.5" />
+              <span className="text-[11px]">سجل الحضور والنقاط</span>
+            </button>
+          </>
+        )}
+
+      </div>
+    </div>
+  );
+}
