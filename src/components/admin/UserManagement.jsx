@@ -229,26 +229,33 @@ export default function UserManagement() {
   return (
     <div className="space-y-6 dir-rtl text-right">
       
-      {/* Banner */}
-      <div className="bg-gradient-to-r from-sky-800 via-indigo-800 to-purple-800 rounded-3xl p-6 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
+      {/* Banner — text block and the 2 action buttons used to sit in one
+          rigid row (flex justify-between). On a phone there isn't enough
+          width for a long Arabic heading AND two buttons side by side, so
+          the heading was wrapping into a squeezed narrow column and the
+          "إضافة شخص جديد" button was getting pushed half off-screen. Now
+          it stacks: text on top, full-width button row below, on small
+          screens — and returns to the original side-by-side row from the
+          sm breakpoint up (tablet/desktop), where there's room for both. */}
+      <div className="bg-gradient-to-r from-sky-800 via-indigo-800 to-purple-800 rounded-3xl p-6 text-white shadow-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 relative overflow-hidden">
         <div>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold mb-2">
             <Users className="w-3.5 h-3.5" /> كنيسة مارمينا والبابا كيرلس - كشوفات ودليل الخدمة
           </span>
-          <h2 className="text-2xl font-black">إدارة كشوفات وأدوار الخدام والمخدومين</h2>
+          <h2 className="text-xl sm:text-2xl font-black">إدارة كشوفات وأدوار الخدام والمخدومين</h2>
           <p className="text-sky-100 text-xs mt-1">إضافة أشخاص جديد وتحديد أدوارهم (أمين خدمة، أمين فصل، أمين مساعد، خادم، أو مخدوم)</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             onClick={handleResetData}
-            className="px-3.5 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center gap-1.5 transition-all"
+            className="flex-1 sm:flex-none px-3.5 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
             title="تحديث البيانات واستيراد الكشوفات"
           >
             تحديث الكشوفات 🔄
           </button>
           <button
             onClick={handleOpenAdd}
-            className="px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-lg flex items-center gap-2 transition-transform active:scale-95 shrink-0"
+            className="flex-1 sm:flex-none px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 shrink-0"
           >
             <Plus className="w-4 h-4" /> إضافة شخص جديد
           </button>
