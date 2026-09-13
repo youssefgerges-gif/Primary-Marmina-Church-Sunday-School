@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Award, Plus, Minus, Search, Sparkles, CheckCircle2, MessageSquare, AlertCircle } from 'lucide-react';
-import { getUsers, addManualPoints, getStudentBalance } from '../../services/supabase';
+import { getScopedStudents, addManualPoints, getStudentBalance, CLASSES } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 
 export default function ManualPointsTool() {
   const { currentUser } = useAuth();
   const { showToast, triggerRefresh, refreshKey } = usePoints();
+
+  // Class admins / assistant admins / servants only ever get back students
+  // from THEIR OWN class (see getScopedStudents + get_scoped_students() in
+  // schema.sql for where that's actually enforced) — super_admin sees
+  // everyone. currentUser.role/class_id is passed only as a fallback for
+  // local/mock mode; against a real Supabase project the server checks who
+  // is actually logged in itself, so this can't be spoofed from the app.
+  const isScoped = currentUser && currentUser.role !== 'super_admin';
+  const scopedClassName = isScoped ? CLASSES.find(c => c.id === currentUser.class_id)?.name : null;
 
   const [students, setStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,14 +39,13 @@ export default function ManualPointsTool() {
   const PRESET_AMOUNTS = [5, 10, 15, 20, 25];
 
   useEffect(() => {
-    getUsers().then(users => {
-      const stuList = users.filter(u => u.role === 'student');
+    getScopedStudents(currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null).then(stuList => {
       setStudents(stuList);
       if (stuList.length > 0 && !selectedStudent) {
         setSelectedStudent(stuList[0]);
       }
     });
-  }, []);
+  }, [currentUser?.role, currentUser?.class_id]);
 
   // Update selected student balance
   useEffect(() => {
@@ -79,15 +87,19 @@ export default function ManualPointsTool() {
     <div className="max-w-xl mx-auto space-y-6 dir-rtl text-right">
       
       {/* Banner */}
-      <div className="bg-gradient-to-r from-sky-700 via-indigo-700 to-sky-800 rounded-3xl p-6 text-white shadow-md flex items-center justify-between relative overflow-hidden">
+      <div className="bg-gradient-to-r from-sky-700 via-indigo-700 to-sky-800 rounded-3xl p-6 text-white shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 relative overflow-hidden">
         <div>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold mb-2">
-            <Award className="w-3.5 h-3.5" /> أداة الخادم اليدوية
+            <Award className="w-3.5 h-3.5" /> أداة الخادم اليدوية{scopedClassName ? ` — ${scopedClassName} فقط` : ''}
           </span>
-          <h2 className="text-2xl font-black">منح النقاط والتشجيع</h2>
-          <p className="text-sky-100 text-xs mt-1">توزيع النقاط التقديرية لإجابة الأسئلة وحفظ الآيات والأجزاء</p>
+          <h2 className="text-xl sm:text-2xl font-black">منح النقاط والتشجيع</h2>
+          <p className="text-sky-100 text-xs mt-1">
+            {isScoped
+              ? `توزيع النقاط التقديرية لمخدومي فصل "${scopedClassName || ''}" فقط لإجابة الأسئلة وحفظ الآيات والأجزاء`
+              : 'توزيع النقاط التقديرية لإجابة الأسئلة وحفظ الآيات والأجزاء'}
+          </p>
         </div>
-        <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-amber-300 shrink-0 shadow-inner">
+        <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-amber-300 shrink-0 shadow-inner self-start sm:self-auto">
           <Sparkles className="w-8 h-8" />
         </div>
       </div>
@@ -111,6 +123,11 @@ export default function ManualPointsTool() {
           </div>
 
           <div className="max-h-40 overflow-y-auto space-y-1.5 border border-slate-200/80 p-2 rounded-2xl bg-slate-50">
+            {filteredStudents.length === 0 && (
+              <p className="text-center text-slate-400 text-[11px] font-bold py-3">
+                {isScoped ? `لا يوجد مخدومين في فصل "${scopedClassName || ''}" حاليًا` : 'لا يوجد مخدومين مطابقين للبحث'}
+              </p>
+            )}
             {filteredStudents.map((s) => (
               <button
                 type="button"

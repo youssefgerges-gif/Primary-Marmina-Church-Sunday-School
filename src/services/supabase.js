@@ -532,27 +532,43 @@ export async function redeemGift(studentId, giftId, servantId) {
   }
 }
 
-export async function getAbsenceReport(minWeeksAbsent = 2) {
-  const fetchAllData = async () => {
-    if (isSupabaseConfigured()) {
-      const { data: users } = await supabase.from('users').select('*').eq('role', 'student');
-      const { data: logs } = await supabase.from('attendance_logs').select('*');
-      return { users: users || [], logs: logs || [] };
-    } else {
-      const db = getMockData();
-      return { users: db.users.filter(u => u.role === 'student'), logs: db.attendance_logs };
-    }
-  };
+// Class-scoped absence report: a class admin, assistant admin, or plain
+// servant should only ever see (and follow up on) the students AND fellow
+// servants of their OWN class — never another class's people, and never
+// another servant outside their class. Only super_admin sees everyone.
+//
+// `viewer` is only used in local/mock mode (no real Supabase project) to
+// replicate that scoping client-side, since there's no real server-side
+// login there to check. When talking to a real Supabase project, the
+// scoping is enforced *server-side* inside the get_absence_report() SQL
+// function (see schema.sql) based on who's actually logged in — so it
+// can't be bypassed by calling the API directly, regardless of what the
+// app's UI does or doesn't show.
+export async function getAbsenceReport(minWeeksAbsent = 2, viewer = null) {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_absence_report', { min_weeks: minWeeksAbsent });
+    if (error) throw new Error(error.message || 'تعذر تحميل سجل الافتقاد');
+    return (data || []).map(row => ({
+      ...row,
+      last_attended: row.last_attended_at ? new Date(row.last_attended_at).toLocaleDateString('ar-EG') : 'لم يحضر من قبل'
+    }));
+  }
 
-  const { users, logs } = await fetchAllData();
+  const db = getMockData();
+  let users = db.users.filter(u => u.role !== 'super_admin');
+  if (viewer && viewer.role !== 'super_admin' && viewer.class_id) {
+    users = users.filter(u => u.class_id === viewer.class_id);
+  }
+
+  const logs = db.attendance_logs;
   const now = new Date();
 
-  return users.map(student => {
-    const studentLogs = logs
-      .filter(l => l.user_id === student.id)
+  return users.map(person => {
+    const personLogs = logs
+      .filter(l => l.user_id === person.id)
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-    const lastAttended = studentLogs[0] ? new Date(studentLogs[0].timestamp) : null;
+    const lastAttended = personLogs[0] ? new Date(personLogs[0].timestamp) : null;
     let weeksAbsent = 0;
 
     if (!lastAttended) {
@@ -563,12 +579,38 @@ export async function getAbsenceReport(minWeeksAbsent = 2) {
     }
 
     return {
-      ...student,
+      ...person,
       last_attended: lastAttended ? lastAttended.toLocaleDateString('ar-EG') : 'لم يحضر من قبل',
       weeks_absent: weeksAbsent
     };
   }).filter(s => s.weeks_absent >= minWeeksAbsent)
     .sort((a, b) => b.weeks_absent - a.weeks_absent);
+}
+
+// Class-scoped student roster: used by ManualPointsTool.jsx and
+// GiftRedemption.jsx so a servant / class admin / assistant admin can only
+// pick a student to give points or gifts to from their OWN class — never a
+// student who belongs to a different class. Only super_admin gets the full
+// student roster.
+//
+// `viewer` is only used in local/mock mode to replicate that scoping
+// client-side, since there's no real server-side login there to check.
+// Against a real Supabase project the scoping is enforced *server-side*
+// inside get_scoped_students() (see schema.sql) based on who's actually
+// logged in, so it can't be bypassed by calling the API directly.
+export async function getScopedStudents(viewer = null) {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_scoped_students');
+    if (error) throw new Error(error.message || 'تعذر تحميل قائمة المخدومين');
+    return data || [];
+  }
+
+  const db = getMockData();
+  let students = db.users.filter(u => u.role === 'student');
+  if (viewer && viewer.role !== 'super_admin' && viewer.class_id) {
+    students = students.filter(s => s.class_id === viewer.class_id);
+  }
+  return students.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 }
 
 // Real dashboard stats: total points ever awarded, and the % of students

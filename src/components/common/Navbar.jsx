@@ -117,7 +117,11 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <Gift className="w-4 h-4 text-emerald-500" /> متجر الهدايا
                 </button>
-                {role === 'class_admin' && (
+                {/* افتقاد الفصل: أمين الفصل وأمين الفصل المساعد فقط (مش الخادم
+                    العادي) — وحتى لو حد وصلّها بطريقة تانية، الداتا نفسها
+                    متقفلة على فصله بس من get_absence_report() في قاعدة
+                    البيانات، مش مجرد إخفاء الزرار. */}
+                {(role === 'class_admin' || role === 'assistant_admin') && (
                   <button
                     onClick={() => setActiveTab('admin-efteqad')}
                     className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${

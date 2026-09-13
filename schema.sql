@@ -86,7 +86,19 @@ CREATE POLICY "Public Gifts Access" ON public.gifts FOR ALL USING (true) WITH CH
 CREATE POLICY "Public Gift TX Access" ON public.gift_transactions FOR ALL USING (true) WITH CHECK (true);
 
 -- Insert Real Servants Data (من كشوفات كنيسة مارمينا والبابا كيرلس)
-INSERT INTO public.users (name, role, phone, qr_code, class_id, title) VALUES
+-- ⚠️ ONE-TIME SEED ONLY: wrapped so this only ever runs the very first time
+-- the database is empty. Without this guard, re-running schema.sql later
+-- (e.g. to add a new function, like today) would silently overwrite any
+-- name/role/class/title edit made afterward through the app's "تعديل"
+-- screen back to these original hardcoded values, and would resurrect
+-- anyone deleted through the app. Points, attendance, and anyone added as a
+-- brand NEW person through the app (a new qr_code) were never at risk
+-- either way — this only closes the gap for edits/deletes to people who
+-- were already in this original seed list.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.users LIMIT 1) THEN
+    INSERT INTO public.users (name, role, phone, qr_code, class_id, title) VALUES
   -- أمناء الخدمة العامة
   ('أبونا بيشوي حليم', 'super_admin', '01200000000', 'QR-FATHER-BISHOY', 'all', 'كاهن الخدمة وأمين الخدمة'),
   ('يوسف جرجس', 'super_admin', '01222222222', 'QR-ADMIN-YOUSSEF', 'all', 'أمين الخدمة'),
@@ -200,11 +212,13 @@ INSERT INTO public.users (name, role, phone, qr_code, class_id, title) VALUES
   ('يونا جمال', 'servant', '01200000512', 'QR-SRV-512', 'grade-5', NULL),
   ('مهرائيل جرجس', 'servant', '01200000513', 'QR-SRV-513', 'grade-5', NULL),
   ('بيشوي القمص داود', 'servant', '01200000514', 'QR-SRV-514', 'grade-5', NULL)
-ON CONFLICT (qr_code) DO UPDATE SET
-  role = EXCLUDED.role,
-  title = EXCLUDED.title,
-  class_id = EXCLUDED.class_id,
-  name = EXCLUDED.name;
+    ON CONFLICT (qr_code) DO UPDATE SET
+      role = EXCLUDED.role,
+      title = EXCLUDED.title,
+      class_id = EXCLUDED.class_id,
+      name = EXCLUDED.name;
+  END IF;
+END $$;
 
 -- ========================================================
 -- REAL LOGIN: username backfill
@@ -318,6 +332,31 @@ DROP POLICY IF EXISTS "Public Attendance Access" ON public.attendance_logs;
 DROP POLICY IF EXISTS "Public Ledger Access" ON public.points_ledger;
 DROP POLICY IF EXISTS "Public Gifts Access" ON public.gifts;
 DROP POLICY IF EXISTS "Public Gift TX Access" ON public.gift_transactions;
+
+-- Also drop the granular policies created below, before re-creating them.
+-- Postgres has no "CREATE POLICY IF NOT EXISTS", so without this a second
+-- run of this file fails with "policy ... already exists" the moment it
+-- reaches the first CREATE POLICY further down — this is what actually
+-- happened just now. These 17 drops make the whole RLS section genuinely
+-- safe to re-run any number of times, matching what the comment above it
+-- already claimed.
+DROP POLICY IF EXISTS "Users can view own row" ON public.users;
+DROP POLICY IF EXISTS "Staff can view all users" ON public.users;
+DROP POLICY IF EXISTS "Super admin can insert users" ON public.users;
+DROP POLICY IF EXISTS "Super admin can update users" ON public.users;
+DROP POLICY IF EXISTS "Super admin can delete users" ON public.users;
+DROP POLICY IF EXISTS "Staff can view all attendance" ON public.attendance_logs;
+DROP POLICY IF EXISTS "Students can view own attendance" ON public.attendance_logs;
+DROP POLICY IF EXISTS "Staff can record attendance" ON public.attendance_logs;
+DROP POLICY IF EXISTS "Staff can view all points" ON public.points_ledger;
+DROP POLICY IF EXISTS "Students can view own points" ON public.points_ledger;
+DROP POLICY IF EXISTS "Staff can add points" ON public.points_ledger;
+DROP POLICY IF EXISTS "Signed-in users can view gifts" ON public.gifts;
+DROP POLICY IF EXISTS "Super admin can add gifts" ON public.gifts;
+DROP POLICY IF EXISTS "Super admin can update gifts" ON public.gifts;
+DROP POLICY IF EXISTS "Super admin can delete gifts" ON public.gifts;
+DROP POLICY IF EXISTS "Staff can view all gift transactions" ON public.gift_transactions;
+DROP POLICY IF EXISTS "Students can view own gift transactions" ON public.gift_transactions;
 
 -- Helpers used inside policies to look up the caller's own role / users.id
 -- from their Supabase Auth id (auth.uid()). SECURITY DEFINER so this
@@ -461,7 +500,12 @@ BEGIN
     RAISE EXCEPTION 'الحساب ده مرتبط بكود تاني بالفعل';
   END IF;
 
-  UPDATE public.users SET auth_user_id = auth.uid() WHERE id = v_row.id;
+  -- "id" is qualified here (public.users.id) for the same reason the
+  -- SELECT above qualifies "username": this function's RETURNS TABLE
+  -- declares an "id" column, which plpgsql turns into an in-scope variable
+  -- for the whole function body — an unqualified "id" here would hit the
+  -- exact same "column reference is ambiguous" error as before.
+  UPDATE public.users SET auth_user_id = auth.uid() WHERE public.users.id = v_row.id;
 
   RETURN QUERY SELECT v_row.id, v_row.name, v_row.role, v_row.class_id, v_row.title, v_row.username;
 END;
@@ -469,3 +513,125 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.claim_login_account(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.claim_login_account(TEXT) TO authenticated;
+
+-- ========================================================
+-- ABSENCE REPORT (متابعة افتقاد الغائبين) — CLASS-SCOPED
+-- Whoever calls this only gets back the people they're actually allowed to
+-- manage absence for:
+--   - super_admin (أمين الخدمة العامة): everyone (every class's students
+--     and servants).
+--   - class_admin / assistant_admin / servant (أمين فصل / أمين فصل مساعد /
+--     خادم): ONLY the students and servants in their OWN class — never
+--     another class's people, and never another servant outside their
+--     class. This is enforced here, server-side, rather than only in the
+--     app's UI, so it can't be bypassed by calling the API directly.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.current_user_class_id()
+RETURNS TEXT
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT class_id FROM public.users WHERE auth_user_id = auth.uid() LIMIT 1;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.current_user_class_id() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.current_user_class_id() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.get_absence_report(min_weeks INTEGER DEFAULT 2)
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  phone TEXT,
+  qr_code TEXT,
+  class_id TEXT,
+  role TEXT,
+  last_attended_at TIMESTAMPTZ,
+  weeks_absent INTEGER
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role = 'student' THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض سجل الافتقاد';
+  END IF;
+
+  IF v_role <> 'super_admin' THEN
+    v_class_id := public.current_user_class_id();
+  END IF;
+
+  RETURN QUERY
+  WITH scoped AS (
+    SELECT
+      u.id, u.name, u.phone, u.qr_code, u.class_id, u.role,
+      (SELECT MAX(al.timestamp) FROM public.attendance_logs al WHERE al.user_id = u.id) AS last_attended_at
+    FROM public.users u
+    WHERE u.role <> 'super_admin'
+      AND (v_role = 'super_admin' OR u.class_id = v_class_id)
+  ),
+  computed AS (
+    SELECT
+      scoped.id, scoped.name, scoped.phone, scoped.qr_code, scoped.class_id, scoped.role,
+      scoped.last_attended_at,
+      (CASE
+        WHEN scoped.last_attended_at IS NULL THEN 4
+        ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - scoped.last_attended_at)) / 604800))::INTEGER
+      END) AS weeks_absent_calc
+    FROM scoped
+  )
+  SELECT
+    computed.id, computed.name, computed.phone, computed.qr_code,
+    computed.class_id, computed.role, computed.last_attended_at,
+    computed.weeks_absent_calc
+  FROM computed
+  WHERE computed.weeks_absent_calc >= min_weeks
+  ORDER BY computed.weeks_absent_calc DESC;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_absence_report(INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_absence_report(INTEGER) TO authenticated;
+
+-- ========================================================
+-- SCOPED STUDENT ROSTER (منح النقاط اليدوي / استبدال الهدايا) — CLASS-SCOPED
+-- Used by ManualPointsTool.jsx and GiftRedemption.jsx so a servant / class
+-- admin / assistant admin can only pick a student to give points or gifts
+-- to from their OWN class — never a student who belongs to another class.
+-- super_admin still gets the full student roster. Enforced here
+-- server-side (not just hidden in the app's UI), same pattern as
+-- get_absence_report() above — it can't be bypassed by calling the API
+-- directly.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.get_scoped_students()
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  phone TEXT,
+  qr_code TEXT,
+  class_id TEXT
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role = 'student' THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض قائمة المخدومين';
+  END IF;
+
+  IF v_role <> 'super_admin' THEN
+    v_class_id := public.current_user_class_id();
+  END IF;
+
+  RETURN QUERY
+  SELECT u.id, u.name, u.phone, u.qr_code, u.class_id
+  FROM public.users u
+  WHERE u.role = 'student'
+    AND (v_role = 'super_admin' OR u.class_id = v_class_id)
+  ORDER BY u.name;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_scoped_students() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_scoped_students() TO authenticated;

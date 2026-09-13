@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Gift, Sparkles, ShoppingBag, QrCode, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { getGifts, getUsers, getStudentBalance, redeemGift } from '../../services/supabase';
+import { getGifts, getScopedStudents, getStudentBalance, redeemGift, CLASSES } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import Modal from '../common/Modal';
@@ -8,6 +8,15 @@ import Modal from '../common/Modal';
 export default function GiftRedemption() {
   const { currentUser } = useAuth();
   const { showToast, triggerRefresh, refreshKey } = usePoints();
+
+  // Class admins / assistant admins / servants only ever get back students
+  // from THEIR OWN class (see getScopedStudents + get_scoped_students() in
+  // schema.sql for where that's actually enforced) — super_admin sees
+  // everyone. currentUser.role/class_id is passed only as a fallback for
+  // local/mock mode; against a real Supabase project the server checks who
+  // is actually logged in itself, so this can't be spoofed from the app.
+  const isScoped = currentUser && currentUser.role !== 'super_admin';
+  const scopedClassName = isScoped ? CLASSES.find(c => c.id === currentUser.class_id)?.name : null;
 
   const [gifts, setGifts] = useState([]);
   const [students, setStudents] = useState([]);
@@ -23,10 +32,10 @@ export default function GiftRedemption() {
     let isMounted = true;
     setLoading(true);
 
-    Promise.all([getGifts(), getUsers()]).then(([giftList, userList]) => {
+    const viewer = currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null;
+    Promise.all([getGifts(), getScopedStudents(viewer)]).then(([giftList, stuList]) => {
       if (isMounted) {
         setGifts(giftList);
-        const stuList = userList.filter(u => u.role === 'student');
         setStudents(stuList);
         if (stuList.length > 0 && !selectedStudent) {
           setSelectedStudent(stuList[0]);
@@ -36,7 +45,7 @@ export default function GiftRedemption() {
     });
 
     return () => { isMounted = false; };
-  }, [refreshKey]);
+  }, [refreshKey, currentUser?.role, currentUser?.class_id]);
 
   // Update selected student balance
   useEffect(() => {
@@ -93,15 +102,19 @@ export default function GiftRedemption() {
     <div className="space-y-6 dir-rtl text-right">
       
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-sky-700 rounded-3xl p-6 text-white shadow-md flex items-center justify-between relative overflow-hidden">
+      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-sky-700 rounded-3xl p-6 text-white shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 relative overflow-hidden">
         <div>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold mb-2">
-            <ShoppingBag className="w-3.5 h-3.5" /> متجر المكافآت
+            <ShoppingBag className="w-3.5 h-3.5" /> متجر المكافآت{scopedClassName ? ` — ${scopedClassName} فقط` : ''}
           </span>
-          <h2 className="text-2xl font-black">استبدال الهدايا للمخدومين</h2>
-          <p className="text-emerald-100 text-xs mt-1">مقايضة نقاط المخدومين بالهدايا والمكافآت المتوفرة بالمخزون</p>
+          <h2 className="text-xl sm:text-2xl font-black">استبدال الهدايا للمخدومين</h2>
+          <p className="text-emerald-100 text-xs mt-1">
+            {isScoped
+              ? `مقايضة نقاط مخدومي فصل "${scopedClassName || ''}" فقط بالهدايا والمكافآت المتوفرة بالمخزون`
+              : 'مقايضة نقاط المخدومين بالهدايا والمكافآت المتوفرة بالمخزون'}
+          </p>
         </div>
-        <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-amber-300 shrink-0 shadow-inner">
+        <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-amber-300 shrink-0 shadow-inner self-start sm:self-auto">
           <Gift className="w-10 h-10" />
         </div>
       </div>
@@ -123,6 +136,9 @@ export default function GiftRedemption() {
               }}
               className="w-full bg-slate-50 text-slate-900 font-bold text-xs py-2 px-3 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
             >
+              {students.length === 0 && (
+                <option value="">{isScoped ? `لا يوجد مخدومين في فصل "${scopedClassName || ''}"` : 'لا يوجد مخدومين'}</option>
+              )}
               {students.map(s => (
                 <option key={s.id} value={s.id}>{s.name} ({s.qr_code})</option>
               ))}

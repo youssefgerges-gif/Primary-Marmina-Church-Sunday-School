@@ -49,6 +49,21 @@ export default function BottomNav({ activeTab, setActiveTab }) {
               <Gift className="w-5 h-5 mb-0.5" />
               <span className="text-[10px]">الهدايا</span>
             </button>
+
+            {/* افتقاد الفصل: أمين الفصل وأمين الفصل المساعد فقط، على غرار
+                نفس الزرار في القائمة العلوية لسطح المكتب — الداتا نفسها
+                متقفلة على فصلهم بس من قاعدة البيانات بعيدًا عن الواجهة. */}
+            {(role === 'class_admin' || role === 'assistant_admin') && (
+              <button
+                onClick={() => setActiveTab('admin-efteqad')}
+                className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                  activeTab === 'admin-efteqad' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+                }`}
+              >
+                <CalendarCheck className="w-5 h-5 mb-0.5" />
+                <span className="text-[10px]">افتقاد الفصل</span>
+              </button>
+            )}
           </>
         )}
 
