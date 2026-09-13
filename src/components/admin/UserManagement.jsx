@@ -43,13 +43,54 @@ export default function UserManagement() {
   }, [refreshKey]);
 
   // Batch card printing: the hidden #batch-print-cards grid (see index.css)
-  // only shows up in the print/"Save as PDF" output, never on screen. We
-  // just need to trigger the browser's print dialog once it's rendered,
-  // then flip the flag back off once the dialog closes (print or cancel).
+  // only shows up in the print/"Save as PDF" output, never on screen. Once
+  // it's rendered we wait for every card's background image (church logo /
+  // saint photos) to actually finish loading before opening the print
+  // dialog — a fixed short delay isn't enough on a phone, where dozens of
+  // images across many cards may still be downloading/decoding, and a
+  // browser's print/PDF snapshot only captures what has already painted.
+  // Skipping this wait is why cards were printing with blank backgrounds.
+  // A safety timeout still opens the dialog even if an image never loads.
   useEffect(() => {
     if (!isPrintingBatch) return;
-    const timer = setTimeout(() => window.print(), 60);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    let printed = false;
+
+    const doPrint = () => {
+      if (printed || cancelled) return;
+      printed = true;
+      window.print();
+    };
+
+    const timer = setTimeout(() => {
+      const container = document.getElementById('batch-print-cards');
+      const imgs = container ? Array.from(container.querySelectorAll('img')) : [];
+      const pending = imgs.filter((img) => !img.complete);
+
+      if (pending.length === 0) {
+        doPrint();
+        return;
+      }
+
+      let remaining = pending.length;
+      const onSettled = () => {
+        remaining -= 1;
+        if (remaining <= 0) doPrint();
+      };
+      pending.forEach((img) => {
+        img.addEventListener('load', onSettled, { once: true });
+        img.addEventListener('error', onSettled, { once: true });
+      });
+
+      // Safety net: don't leave the user stuck with no print dialog if an
+      // image somehow never fires load/error.
+      setTimeout(doPrint, 5000);
+    }, 60);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [isPrintingBatch]);
 
   useEffect(() => {
@@ -274,85 +315,160 @@ export default function UserManagement() {
           </div>
         </div>
 
-        {/* Users Table */}
+        {/* Users List: a real table on wider screens (tablet/desktop), and
+            a stacked card list on phones — a table with 7 columns simply
+            can't fit a phone's width, and scrolling it sideways hides the
+            action buttons (edit/delete) off-screen where a non-technical
+            user won't find them. Both render from the same filteredUsers
+            data, only one is visible at a time per breakpoint. */}
         {loading ? (
           <div className="py-12 text-center text-slate-400 dark:text-slate-500 font-bold text-sm">جاري تحميل كشوفات الأسماء... ⏳</div>
         ) : filteredUsers.length === 0 ? (
           <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-sm">لا يوجد أسماء تطابق البحث حالياً. اضغط "إضافة شخص جديد".</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-extrabold">
-                  <th className="p-3.5 rounded-r-xl">الاسم بالكامل</th>
-                  <th className="p-3.5">الدور والصفة</th>
-                  <th className="p-3.5">الفصل المخصص</th>
-                  <th className="p-3.5">رقم التليفون</th>
-                  <th className="p-3.5">رمز QR</th>
-                  <th className="p-3.5">كود الدخول</th>
-                  <th className="p-3.5 rounded-l-xl text-center">الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredUsers.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
-                    <td className="p-3.5 font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-200 flex items-center justify-center font-black shrink-0">
-                        {u.name[0]}
-                      </div>
-                      <div>
-                        <span className="block font-bold">{u.name}</span>
-                        {u.title && <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block">{u.title}</span>}
-                      </div>
-                    </td>
-                    <td className="p-3.5">
-                      {getRoleBadge(u)}
-                    </td>
-                    <td className="p-3.5 font-bold text-slate-700 dark:text-slate-300">
-                      {u.class_id === 'all' ? 'جميع الفصول 🌐' : CLASSES.find(c => c.id === u.class_id)?.name || 'غير محدد'}
-                    </td>
-                    <td className="p-3.5 font-medium text-slate-600 dark:text-slate-400">{u.phone || 'غير مسجل'}</td>
-                    <td className="p-3.5 font-mono font-bold text-slate-700 dark:text-slate-300">{u.qr_code}</td>
-                    <td className="p-3.5 font-mono font-black text-sky-700 dark:text-sky-300">
-                      {u.username || <span className="text-slate-400 dark:text-slate-600 font-sans font-medium">—</span>}
-                    </td>
-                    <td className="p-3.5 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => setWhatsappUser(u)}
-                          className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-emerald-200 dark:border-emerald-800"
-                          title="إرسال رسالة واتساب"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setSelectedQRUser(u)}
-                          className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-sky-200 dark:border-sky-800"
-                          title="عرض كارت QR"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(u)}
-                          className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-slate-200 dark:border-slate-700"
-                          title="تعديل الدور أو البيانات"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(u.id, u.name)}
-                          className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-rose-200 dark:border-rose-800"
-                          title="حذف من الكشوفات"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
+          <>
+            {/* Table — md screens and up */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-extrabold">
+                    <th className="p-3.5 rounded-r-xl">الاسم بالكامل</th>
+                    <th className="p-3.5">الدور والصفة</th>
+                    <th className="p-3.5">الفصل المخصص</th>
+                    <th className="p-3.5">رقم التليفون</th>
+                    <th className="p-3.5">رمز QR</th>
+                    <th className="p-3.5">كود الدخول</th>
+                    <th className="p-3.5 rounded-l-xl text-center">الإجراءات</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredUsers.map((u) => (
+                    <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                      <td className="p-3.5 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-200 flex items-center justify-center font-black shrink-0">
+                          {u.name[0]}
+                        </div>
+                        <div>
+                          <span className="block font-bold">{u.name}</span>
+                          {u.title && <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block">{u.title}</span>}
+                        </div>
+                      </td>
+                      <td className="p-3.5">
+                        {getRoleBadge(u)}
+                      </td>
+                      <td className="p-3.5 font-bold text-slate-700 dark:text-slate-300">
+                        {u.class_id === 'all' ? 'جميع الفصول 🌐' : CLASSES.find(c => c.id === u.class_id)?.name || 'غير محدد'}
+                      </td>
+                      <td className="p-3.5 font-medium text-slate-600 dark:text-slate-400">{u.phone || 'غير مسجل'}</td>
+                      <td className="p-3.5 font-mono font-bold text-slate-700 dark:text-slate-300">{u.qr_code}</td>
+                      <td className="p-3.5 font-mono font-black text-sky-700 dark:text-sky-300">
+                        {u.username || <span className="text-slate-400 dark:text-slate-600 font-sans font-medium">—</span>}
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => setWhatsappUser(u)}
+                            className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-emerald-200 dark:border-emerald-800"
+                            title="إرسال رسالة واتساب"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setSelectedQRUser(u)}
+                            className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-sky-200 dark:border-sky-800"
+                            title="عرض كارت QR"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenEdit(u)}
+                            className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-slate-200 dark:border-slate-700"
+                            title="تعديل الدور أو البيانات"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(u.id, u.name)}
+                            className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-rose-200 dark:border-rose-800"
+                            title="حذف من الكشوفات"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Card list — phones only, below md */}
+            <div className="md:hidden space-y-3">
+              {filteredUsers.map((u) => (
+                <div
+                  key={u.id}
+                  className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3.5"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-900/60 text-sky-800 dark:text-sky-200 flex items-center justify-center font-black shrink-0">
+                      {u.name[0]}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{u.name}</p>
+                      {u.title && <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{u.title}</p>}
+                    </div>
+                    <div className="shrink-0">{getRoleBadge(u)}</div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 mt-3 text-[11px]">
+                    <div className="text-slate-500 dark:text-slate-400 truncate">
+                      الفصل: <span className="font-bold text-slate-700 dark:text-slate-300">{u.class_id === 'all' ? 'جميع الفصول 🌐' : CLASSES.find(c => c.id === u.class_id)?.name || 'غير محدد'}</span>
+                    </div>
+                    <div className="text-slate-500 dark:text-slate-400 truncate">
+                      الهاتف: <span className="font-bold text-slate-700 dark:text-slate-300">{u.phone || 'غير مسجل'}</span>
+                    </div>
+                    <div className="text-slate-500 dark:text-slate-400 truncate">
+                      رمز QR: <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{u.qr_code}</span>
+                    </div>
+                    <div className="text-slate-500 dark:text-slate-400 truncate">
+                      كود الدخول: <span className="font-mono font-black text-sky-700 dark:text-sky-300">{u.username || '—'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                    <button
+                      onClick={() => setWhatsappUser(u)}
+                      className="flex-1 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 active:bg-emerald-100 dark:active:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center border border-emerald-200 dark:border-emerald-800"
+                      title="إرسال رسالة واتساب"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setSelectedQRUser(u)}
+                      className="flex-1 py-2 rounded-xl bg-sky-50 dark:bg-sky-950/40 active:bg-sky-100 dark:active:bg-sky-900/60 text-sky-700 dark:text-sky-300 flex items-center justify-center border border-sky-200 dark:border-sky-800"
+                      title="عرض كارت QR"
+                    >
+                      <QrCode className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleOpenEdit(u)}
+                      className="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700"
+                      title="تعديل الدور أو البيانات"
+                    >
+                      <Edit2 className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteUser(u.id, u.name)}
+                      className="flex-1 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 active:bg-rose-100 dark:active:bg-rose-900/60 text-rose-600 dark:text-rose-300 flex items-center justify-center border border-rose-200 dark:border-rose-800"
+                      title="حذف من الكشوفات"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
       </div>
