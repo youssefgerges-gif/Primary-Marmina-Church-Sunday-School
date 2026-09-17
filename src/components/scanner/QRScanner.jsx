@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
-import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
+import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle } from 'lucide-react';
 import { recordAttendance, getManualAttendanceRoster, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +21,8 @@ export default function QRScanner({ onScanSuccess }) {
   const [lastScannedUser, setLastScannedUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scanMethod, setScanMethod] = useState('camera'); // 'camera' or 'picker'
+  const [cameraError, setCameraError] = useState(null);
+  const [cameraRetryKey, setCameraRetryKey] = useState(0);
   const scannerRef = useRef(null);
 
   // Class-scoped, role-differentiated roster for the manual picker tab —
@@ -73,63 +75,80 @@ export default function QRScanner({ onScanSuccess }) {
     }
   };
 
-  // Initialize html5-qrcode scanner when camera mode active
+  // Initialize the camera when camera mode is active — using the lower-level
+  // Html5Qrcode API (Html5Qrcode.getCameras() + .start(cameraId, ...))
+  // instead of the higher-level Html5QrcodeScanner widget we used before.
+  //
+  // Why: the widget picks a camera via a "facingMode" hint, and on some
+  // Android camera stacks that hint gets silently accepted (the permission
+  // prompt shows and is granted normally) but the resulting video stream
+  // never actually renders — an empty/black box with no error anywhere.
+  // Explicitly listing the real camera devices and starting a specific one
+  // by its device ID (the officially recommended pattern for this exact
+  // failure mode) sidesteps that facingMode negotiation entirely. We also
+  // now show any startup error directly on screen (see cameraError below)
+  // instead of only logging it to the console, so this can be diagnosed
+  // without needing to plug the phone into a computer.
   useEffect(() => {
-    let scanner = null;
-    if (scanMethod === 'camera') {
-      // Small timeout to allow element DOM rendering
-      const timer = setTimeout(() => {
-        try {
-          scanner = new Html5QrcodeScanner(
-            "reader",
-            {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
-              aspectRatio: 1.0,
-              showTorchButtonIfSupported: true,
-              // Ask for the rear/back camera by default (QR scanning is done
-              // by pointing the phone at someone else's card, not a selfie).
-              // "ideal" (not "exact") so it still falls back gracefully on a
-              // laptop with only a front-facing webcam instead of failing.
-              //
-              // IMPORTANT: don't also force aspectRatio inside videoConstraints
-              // (we used to set it to 1.0 here, matching the qrbox above) —
-              // most phone rear cameras can't natively stream a strict 1:1
-              // feed, and forcing it is what caused the black/empty camera
-              // box on Android even after the permission prompt was accepted
-              // (the getUserMedia call "succeeds" but the resulting video
-              // stream never actually renders). The top-level aspectRatio
-              // above already controls the on-screen scanning box shape —
-              // the real camera stream itself should stay unconstrained.
-              videoConstraints: {
-                facingMode: { ideal: "environment" }
-              }
-            },
-            /* verbose= */ false
-          );
+    if (scanMethod !== 'camera') return;
+    let cancelled = false;
+    let html5QrCode = null;
+    setCameraError(null);
 
-          scanner.render(
-            (decodedText) => {
-              handleQRProcess(decodedText);
-            },
-            (errorMessage) => {
-              // Ignore standard frame scan errors
-            }
-          );
-          scannerRef.current = scanner;
-        } catch (e) {
-          console.warn("Camera QR Scanner initialization:", e);
-        }
-      }, 300);
+    const timer = setTimeout(async () => {
+      try {
+        html5QrCode = new Html5Qrcode("reader");
+        scannerRef.current = html5QrCode;
 
-      return () => {
-        clearTimeout(timer);
-        if (scannerRef.current) {
-          scannerRef.current.clear().catch(err => console.error("Failed to clear scanner", err));
+        const devices = await Html5Qrcode.getCameras();
+        if (cancelled) return;
+        if (!devices || devices.length === 0) {
+          setCameraError('لم يتم العثور على أي كاميرا على هذا الجهاز.');
+          return;
         }
-      };
-    }
-  }, [scanMethod]);
+
+        // Prefer a camera whose label mentions "back"/"rear" — most phones
+        // report this once permission is granted. Otherwise, with more than
+        // one camera the last one in the list is usually the main rear
+        // camera on Android; with only one camera (most laptops), just use
+        // it, front-facing or not.
+        const backCamera =
+          devices.find((d) => /back|rear|environment/i.test(d.label || '')) ||
+          (devices.length > 1 ? devices[devices.length - 1] : devices[0]);
+
+        await html5QrCode.start(
+          backCamera.id,
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (decodedText) => {
+            handleQRProcess(decodedText);
+          },
+          () => {
+            // Ignore standard per-frame "no QR in this frame" scan errors
+          }
+        );
+      } catch (e) {
+        if (cancelled) return;
+        console.warn("Camera QR Scanner initialization:", e);
+        setCameraError(
+          (e && (e.message || String(e))) ||
+            'تعذر تشغيل الكاميرا. تأكد من السماح بإذن الكاميرا لهذا الموقع من إعدادات المتصفح، ثم أعد المحاولة.'
+        );
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      const s = scannerRef.current;
+      if (s) {
+        if (s.isScanning) {
+          s.stop().then(() => s.clear()).catch(() => {});
+        } else {
+          try { s.clear(); } catch (e) {}
+        }
+      }
+    };
+  }, [scanMethod, cameraRetryKey]);
 
   return (
     <div className="max-w-xl mx-auto space-y-6 dir-rtl text-right">
@@ -178,6 +197,18 @@ export default function QRScanner({ onScanSuccess }) {
 
           <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-sky-300 bg-slate-50 min-h-[300px] flex items-center justify-center">
             <div id="reader" className="w-full"></div>
+            {cameraError && (
+              <div className="absolute inset-0 bg-white flex flex-col items-center justify-center gap-3 p-6 text-center z-10">
+                <AlertTriangle className="w-8 h-8 text-amber-500" />
+                <p className="text-slate-700 text-xs font-semibold leading-relaxed">{cameraError}</p>
+                <button
+                  onClick={() => setCameraRetryKey((k) => k + 1)}
+                  className="px-4 py-2 rounded-xl bg-sky-600 text-white text-xs font-bold"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            )}
             {loading && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-10 gap-2">
                 <RefreshCw className="w-8 h-8 text-sky-600 animate-spin" />
