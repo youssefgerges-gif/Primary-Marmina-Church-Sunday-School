@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarX, MessageCircle, Phone, Clock, AlertTriangle, Send } from 'lucide-react';
+import { CalendarX, Phone, Clock, AlertTriangle, Send, Users, User } from 'lucide-react';
 import { getAbsenceReport, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
 import WhatsAppModal from '../common/WhatsAppModal';
+import goodShepherdImg from '../../assets/good-shepherd.jpg';
 
 export default function AbsenceTracker() {
   const { showToast } = usePoints();
@@ -12,6 +13,13 @@ export default function AbsenceTracker() {
   const [minWeeks, setMinWeeks] = useState(2);
   const [loading, setLoading] = useState(true);
   const [whatsappRecipient, setWhatsappRecipient] = useState(null);
+
+  // Servants tab vs. Students tab — the data itself already includes both
+  // (get_absence_report() returns everyone except super_admin, already
+  // scoped to the caller's own class where relevant), this just splits the
+  // single combined list into two views instead of mixing خدام و مخدومين
+  // together in one table.
+  const [personType, setPersonType] = useState('students'); // 'students' or 'servants'
 
   // Class admins / assistant admins / servants only ever get back THEIR
   // OWN class's people (see getAbsenceReport + get_absence_report() in
@@ -54,6 +62,11 @@ export default function AbsenceTracker() {
     );
   };
 
+  const studentsCount = absentStudents.filter(s => s.role === 'student').length;
+  const servantsCount = absentStudents.filter(s => s.role !== 'student').length;
+  const visibleList = absentStudents.filter(s => (personType === 'students' ? s.role === 'student' : s.role !== 'student'));
+  const personTypeLabel = personType === 'students' ? 'المخدومين' : 'الخدام';
+
   return (
     <div className="space-y-6 dir-rtl text-right">
       
@@ -70,20 +83,47 @@ export default function AbsenceTracker() {
               : 'حصر كل المخدومين والخدام المنقطعين أو الغائبين في كل الفصول وإرسال رسائل افتقاد وتنبيهات مخصصة عبر الواتساب'}
           </p>
         </div>
-        <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-rose-200 shrink-0 shadow-inner self-start sm:self-auto">
-          <MessageCircle className="w-10 h-10" />
+        <div className="w-16 h-16 rounded-2xl border border-white/20 shrink-0 shadow-inner self-start sm:self-auto overflow-hidden">
+          <img
+            src={goodShepherdImg}
+            alt="الراعي الصالح"
+            className="w-full h-full object-cover"
+            style={{ objectPosition: 'center 35%' }}
+          />
         </div>
       </div>
 
       {/* Controls & Table Container */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-4">
-        
+
+        {/* Servants / Students Tabs */}
+        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
+          <button
+            type="button"
+            onClick={() => setPersonType('students')}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+              personType === 'students' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <User className="w-4 h-4" /> المخدومين ({studentsCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setPersonType('servants')}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+              personType === 'servants' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Users className="w-4 h-4" /> الخدام ({servantsCount})
+          </button>
+        </div>
+
         {/* Filter Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-500" />
             <h3 className="font-extrabold text-slate-900 text-base">
-              {isScoped ? `قائمة الغائبين — فصل ${scopedClassName || ''} فقط` : 'قائمة المخدومين والخدام الغائبين (كل الفصول)'}
+              {isScoped ? `قائمة ${personTypeLabel} الغائبين — فصل ${scopedClassName || ''} فقط` : `قائمة ${personTypeLabel} الغائبين (كل الفصول)`}
             </h3>
           </div>
 
@@ -105,9 +145,9 @@ export default function AbsenceTracker() {
         {/* Table */}
         {loading ? (
           <div className="py-12 text-center text-slate-400 font-bold text-sm">جاري حصر كشوفات الغياب... ⏳</div>
-        ) : absentStudents.length === 0 ? (
+        ) : visibleList.length === 0 ? (
           <div className="py-12 text-center text-emerald-700 font-bold text-sm bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-            🎉 رائع جداً! لا يوجد {isScoped ? `في فصل ${scopedClassName || ''}` : ''} غائبين أكثر من {minWeeks} أسابيع حالياً.
+            🎉 رائع جداً! لا يوجد من {personTypeLabel} {isScoped ? `في فصل ${scopedClassName || ''}` : ''} غائبين أكثر من {minWeeks} أسابيع حالياً.
           </div>
         ) : (
           <>
@@ -125,7 +165,7 @@ export default function AbsenceTracker() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {absentStudents.map((s) => (
+                  {visibleList.map((s) => (
                     <tr key={s.id} className="hover:bg-rose-50/30 transition-colors">
                       <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-black shrink-0 border border-rose-200/60">
@@ -166,7 +206,7 @@ export default function AbsenceTracker() {
 
             {/* Card list — phones only, below md */}
             <div className="md:hidden space-y-3">
-              {absentStudents.map((s) => (
+              {visibleList.map((s) => (
                 <div key={s.id} className="rounded-2xl border border-slate-200/80 bg-slate-50 p-3.5">
                   <div className="flex items-center gap-2.5">
                     <div className="w-9 h-9 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-black shrink-0 border border-rose-200/60">
