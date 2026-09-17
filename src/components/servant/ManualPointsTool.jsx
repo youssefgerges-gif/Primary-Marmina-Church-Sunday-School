@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Plus, Minus, Search, Sparkles, CheckCircle2, MessageSquare, AlertCircle } from 'lucide-react';
+import { Award, Plus, Minus, Search, Sparkles, CheckCircle2 } from 'lucide-react';
 import { getScopedStudents, addManualPoints, getStudentBalance, CLASSES } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
@@ -21,19 +21,13 @@ export default function ManualPointsTool() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentBalance, setStudentBalance] = useState(0);
-  
-  const [amount, setAmount] = useState(5);
-  const [reason, setReason] = useState('إجابة سؤال أثناء الدرس 📖');
-  const [loading, setLoading] = useState(false);
 
-  // Quick Preset Reasons
-  const PRESET_REASONS = [
-    'إجابة سؤال أثناء الدرس 📖',
-    'حفظ آية الأسبوع 📜',
-    'مشاركة ممتازة في الأنشطة 🎨',
-    'مواظبة وحضور قداس الأحد ⛪️',
-    'سلوك ومحبة للمخدومين 🤝'
-  ];
+  // 'add' or 'deduct' — an explicit toggle instead of relying on the amount
+  // going negative. `amount` itself is always a plain positive magnitude;
+  // the sign is applied from `mode` right before it's saved.
+  const [mode, setMode] = useState('add');
+  const [amount, setAmount] = useState(5);
+  const [loading, setLoading] = useState(false);
 
   // Quick Preset Amounts
   const PRESET_AMOUNTS = [5, 10, 15, 20, 25];
@@ -61,19 +55,26 @@ export default function ManualPointsTool() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedStudent) return;
-    if (!reason || reason.trim() === '') {
-      showToast('خطأ في البيانات', 'يرجى إدخال سبب توزيع النقاط كشرط أساسي في السجل', 0, 'error');
+    if (!amount || amount <= 0) {
+      showToast('خطأ في البيانات', 'يرجى إدخال قيمة نقاط أكبر من صفر', 0, 'error');
       return;
     }
 
+    const signedAmount = mode === 'add' ? amount : -amount;
+    // The database still keeps a "reason" per entry for the archive/log —
+    // that's just no longer something the servant has to type or pick
+    // themselves; it's filled in automatically from which button they
+    // pressed (إضافة/خصم).
+    const autoReason = mode === 'add' ? 'إضافة نقاط يدوية من الخادم' : 'خصم نقاط يدوي من الخادم';
+
     setLoading(true);
     try {
-      await addManualPoints(selectedStudent.id, amount, reason, currentUser?.id || 'servant-1');
+      await addManualPoints(selectedStudent.id, signedAmount, autoReason, currentUser?.id || 'servant-1');
       triggerRefresh();
       showToast(
-        amount >= 0 ? 'تم إضافة النقاط بنجاح! 🌟' : 'تم خصم النقاط بنجاح ⚠️',
-        `تم تسجيل ${amount > 0 ? '+' : ''}${amount} نقطة لـ ${selectedStudent.name}`,
-        Math.max(0, amount),
+        mode === 'add' ? 'تم إضافة النقاط بنجاح! 🌟' : 'تم خصم النقاط بنجاح ⚠️',
+        `تم تسجيل ${mode === 'add' ? '+' : '-'}${amount} نقطة لـ ${selectedStudent.name}`,
+        mode === 'add' ? amount : 0,
         'success'
       );
     } catch (err) {
@@ -160,21 +161,47 @@ export default function ManualPointsTool() {
           </div>
         )}
 
+        {/* Add / Deduct Toggle */}
+        <div>
+          <label className="block text-xs font-extrabold text-slate-900 mb-2">2. نوع العملية</label>
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setMode('add')}
+              className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                mode === 'add' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Plus className="w-4 h-4" /> إضافة نقاط
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('deduct')}
+              className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                mode === 'deduct' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Minus className="w-4 h-4" /> خصم نقاط
+            </button>
+          </div>
+        </div>
+
         {/* Amount Input & Presets */}
         <div>
-          <label className="block text-xs font-extrabold text-slate-900 mb-2">2. قيمة النقاط</label>
+          <label className="block text-xs font-extrabold text-slate-900 mb-2">3. قيمة النقاط</label>
           <div className="flex items-center gap-2 mb-3">
             <button
               type="button"
-              onClick={() => setAmount(prev => Math.max(-50, prev - 5))}
+              onClick={() => setAmount(prev => Math.max(0, prev - 5))}
               className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-black text-slate-700 border border-slate-200 transition-colors"
             >
               <Minus className="w-4 h-4" />
             </button>
             <input
               type="number"
+              min="0"
               value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
               className="flex-1 text-center font-black text-lg py-2 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
             />
             <button
@@ -194,39 +221,12 @@ export default function ManualPointsTool() {
                 type="button"
                 onClick={() => setAmount(pts)}
                 className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
-                  amount === pts ? 'bg-sky-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  amount === pts
+                    ? mode === 'add' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
-                +{pts} نقطة
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Reason Input (Mandatory) */}
-        <div>
-          <label className="block text-xs font-extrabold text-slate-900 mb-2 flex items-center gap-1">
-            <MessageSquare className="w-3.5 h-3.5 text-sky-600" /> 3. السبب (إجباري للأرشيف والسجل)
-          </label>
-          <input
-            type="text"
-            required
-            placeholder="اكتب سبب منح النقاط..."
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
-          />
-
-          {/* Preset Reasons Chips */}
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {PRESET_REASONS.map((preset, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => setReason(preset)}
-                className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200/60"
-              >
-                {preset}
+                {mode === 'add' ? '+' : '-'}{pts} نقطة
               </button>
             ))}
           </div>
@@ -236,9 +236,17 @@ export default function ManualPointsTool() {
         <button
           type="submit"
           disabled={loading || !selectedStudent}
-          className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+          className={`w-full py-3.5 rounded-2xl text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${
+            mode === 'add'
+              ? 'bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-700 hover:to-sky-700'
+              : 'bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800'
+          }`}
         >
-          {loading ? 'جاري الحفظ...' : `تسجيل ${amount > 0 ? '+' : ''}${amount} نقطة للمخدوم`}
+          {loading
+            ? 'جاري الحفظ...'
+            : mode === 'add'
+              ? `تسجيل +${amount} نقطة للمخدوم`
+              : `خصم ${amount} نقطة من المخدوم`}
         </button>
 
       </form>
