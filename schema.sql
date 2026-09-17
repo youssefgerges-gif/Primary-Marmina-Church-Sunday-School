@@ -47,43 +47,19 @@ CREATE TABLE IF NOT EXISTS public.points_ledger (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Create Gifts Table
-CREATE TABLE IF NOT EXISTS public.gifts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  point_cost NUMERIC NOT NULL,
-  stock NUMERIC DEFAULT 0,
-  icon TEXT DEFAULT '🎁',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 5. Create Gift Transactions Table
-CREATE TABLE IF NOT EXISTS public.gift_transactions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-  gift_id UUID REFERENCES public.gifts(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- Enable Row Level Security (RLS) for public access
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.points_ledger ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.gifts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.gift_transactions ENABLE ROW LEVEL SECURITY;
 
 -- Drop Policies if exist to prevent duplicate creation errors
 DROP POLICY IF EXISTS "Public Users Access" ON public.users;
 DROP POLICY IF EXISTS "Public Attendance Access" ON public.attendance_logs;
 DROP POLICY IF EXISTS "Public Ledger Access" ON public.points_ledger;
-DROP POLICY IF EXISTS "Public Gifts Access" ON public.gifts;
-DROP POLICY IF EXISTS "Public Gift TX Access" ON public.gift_transactions;
 
 CREATE POLICY "Public Users Access" ON public.users FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Attendance Access" ON public.attendance_logs FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Ledger Access" ON public.points_ledger FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Public Gifts Access" ON public.gifts FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Public Gift TX Access" ON public.gift_transactions FOR ALL USING (true) WITH CHECK (true);
 
 -- Insert Real Servants Data (من كشوفات كنيسة مارمينا والبابا كيرلس)
 -- ⚠️ ONE-TIME SEED ONLY: wrapped so this only ever runs the very first time
@@ -239,70 +215,6 @@ SET username = UPPER(REPLACE(REPLACE(qr_code, 'QR-', ''), '-', ''))
 WHERE username IS NULL;
 
 -- ========================================================
--- ATOMIC GIFT REDEMPTION FUNCTION
--- Fixes a race condition: the app used to read gift.stock, then separately
--- write stock - 1, with no locking — two servants redeeming the same gift
--- at the same instant could both pass the "in stock?" check and both
--- decrement stock, overselling it. This function locks the gift row
--- (FOR UPDATE) so a second concurrent call waits for the first to finish
--- and re-checks against the up-to-date stock, and does the balance check
--- plus all three writes (gift_transactions, points_ledger, stock update)
--- in one atomic transaction.
--- Run this once in the Supabase SQL editor to add it to an existing project.
--- ========================================================
-CREATE OR REPLACE FUNCTION public.redeem_gift(
-  p_student_id UUID,
-  p_gift_id UUID,
-  p_servant_id TEXT DEFAULT 'system'
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_gift RECORD;
-  v_balance NUMERIC;
-BEGIN
-  SELECT * INTO v_gift FROM public.gifts WHERE id = p_gift_id FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'الهدية غير متوفرة';
-  END IF;
-
-  IF v_gift.stock <= 0 THEN
-    RAISE EXCEPTION 'الهدية نفذت من المخزون!';
-  END IF;
-
-  SELECT COALESCE(SUM(amount), 0) INTO v_balance
-  FROM public.points_ledger WHERE student_id = p_student_id;
-
-  IF v_balance < v_gift.point_cost THEN
-    RAISE EXCEPTION 'رصيد المخدوم غير كافٍ. المطلوب: % نقطة، الرصيد: % نقطة', v_gift.point_cost, v_balance;
-  END IF;
-
-  INSERT INTO public.gift_transactions (student_id, gift_id)
-  VALUES (p_student_id, p_gift_id);
-
-  INSERT INTO public.points_ledger (student_id, amount, reason, servant_id)
-  VALUES (p_student_id, -v_gift.point_cost, 'استبدال هدية: ' || v_gift.name, p_servant_id);
-
-  UPDATE public.gifts SET stock = stock - 1 WHERE id = p_gift_id;
-
-  RETURN jsonb_build_object(
-    'success', true,
-    'giftName', v_gift.name,
-    'newBalance', v_balance - v_gift.point_cost
-  );
-END;
-$$;
-
--- Only a signed-in person should be able to redeem a gift (previously also
--- granted to anon, from before real login existed).
-REVOKE EXECUTE ON FUNCTION public.redeem_gift(UUID, UUID, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.redeem_gift(UUID, UUID, TEXT) TO authenticated;
-
--- ========================================================
 -- RLS LOCKDOWN
 -- Replaces the "FOR ALL USING (true) WITH CHECK (true)" policies above
 -- (which let anyone with the app's public anon key read or write anything
@@ -312,15 +224,11 @@ GRANT EXECUTE ON FUNCTION public.redeem_gift(UUID, UUID, TEXT) TO authenticated;
 --
 -- Design (kept intentionally simple — a good v1, not a full re-architecture):
 --   - Staff (any role except student) can see the whole roster/ledger/
---     attendance/gift-history, same as they effectively could through the
+--     attendance history, same as they effectively could through the
 --     app's screens before. This is NOT split further per class yet.
 --   - A student can only see their own row and their own history.
---   - Only super_admin can add/edit/delete people or manage the gift
---     catalogue (matches what the UI already restricts to that role).
---   - gift_transactions has no direct INSERT policy at all: only the
---     redeem_gift() function (SECURITY DEFINER, bypasses RLS) writes there,
---     so a redemption can only ever happen through that one atomic,
---     balance-checked path.
+--   - Only super_admin can add/edit/delete people (matches what the UI
+--     already restricts to that role).
 --   - Logging in itself needs two narrow SECURITY DEFINER functions
 --     (find_login_account, claim_login_account) since a logged-out visitor
 --     has no direct table access anymore — see supabase.js.
@@ -330,16 +238,13 @@ GRANT EXECUTE ON FUNCTION public.redeem_gift(UUID, UUID, TEXT) TO authenticated;
 DROP POLICY IF EXISTS "Public Users Access" ON public.users;
 DROP POLICY IF EXISTS "Public Attendance Access" ON public.attendance_logs;
 DROP POLICY IF EXISTS "Public Ledger Access" ON public.points_ledger;
-DROP POLICY IF EXISTS "Public Gifts Access" ON public.gifts;
-DROP POLICY IF EXISTS "Public Gift TX Access" ON public.gift_transactions;
 
 -- Also drop the granular policies created below, before re-creating them.
 -- Postgres has no "CREATE POLICY IF NOT EXISTS", so without this a second
 -- run of this file fails with "policy ... already exists" the moment it
--- reaches the first CREATE POLICY further down — this is what actually
--- happened just now. These 17 drops make the whole RLS section genuinely
--- safe to re-run any number of times, matching what the comment above it
--- already claimed.
+-- reaches the first CREATE POLICY further down. These drops make the whole
+-- RLS section genuinely safe to re-run any number of times, matching what
+-- the comment above it already claimed.
 DROP POLICY IF EXISTS "Users can view own row" ON public.users;
 DROP POLICY IF EXISTS "Staff can view all users" ON public.users;
 DROP POLICY IF EXISTS "Super admin can insert users" ON public.users;
@@ -351,12 +256,6 @@ DROP POLICY IF EXISTS "Staff can record attendance" ON public.attendance_logs;
 DROP POLICY IF EXISTS "Staff can view all points" ON public.points_ledger;
 DROP POLICY IF EXISTS "Students can view own points" ON public.points_ledger;
 DROP POLICY IF EXISTS "Staff can add points" ON public.points_ledger;
-DROP POLICY IF EXISTS "Signed-in users can view gifts" ON public.gifts;
-DROP POLICY IF EXISTS "Super admin can add gifts" ON public.gifts;
-DROP POLICY IF EXISTS "Super admin can update gifts" ON public.gifts;
-DROP POLICY IF EXISTS "Super admin can delete gifts" ON public.gifts;
-DROP POLICY IF EXISTS "Staff can view all gift transactions" ON public.gift_transactions;
-DROP POLICY IF EXISTS "Students can view own gift transactions" ON public.gift_transactions;
 
 -- Helpers used inside policies to look up the caller's own role / users.id
 -- from their Supabase Auth id (auth.uid()). SECURITY DEFINER so this
@@ -426,35 +325,6 @@ CREATE POLICY "Students can view own points" ON public.points_ledger
 CREATE POLICY "Staff can add points" ON public.points_ledger
   FOR INSERT TO authenticated
   WITH CHECK (public.current_user_role() IS NOT NULL AND public.current_user_role() <> 'student');
-
--- ===== gifts =====
-CREATE POLICY "Signed-in users can view gifts" ON public.gifts
-  FOR SELECT TO authenticated
-  USING (true);
-
-CREATE POLICY "Super admin can add gifts" ON public.gifts
-  FOR INSERT TO authenticated
-  WITH CHECK (public.current_user_role() = 'super_admin');
-
-CREATE POLICY "Super admin can update gifts" ON public.gifts
-  FOR UPDATE TO authenticated
-  USING (public.current_user_role() = 'super_admin')
-  WITH CHECK (public.current_user_role() = 'super_admin');
-
-CREATE POLICY "Super admin can delete gifts" ON public.gifts
-  FOR DELETE TO authenticated
-  USING (public.current_user_role() = 'super_admin');
-
--- ===== gift_transactions =====
--- No INSERT policy on purpose: redemptions only ever happen through the
--- redeem_gift() function, which bypasses RLS as its owner.
-CREATE POLICY "Staff can view all gift transactions" ON public.gift_transactions
-  FOR SELECT TO authenticated
-  USING (public.current_user_role() IS NOT NULL AND public.current_user_role() <> 'student');
-
-CREATE POLICY "Students can view own gift transactions" ON public.gift_transactions
-  FOR SELECT TO authenticated
-  USING (student_id = public.current_user_id());
 
 -- ========================================================
 -- LOGIN LOOKUP FUNCTIONS
@@ -593,14 +463,13 @@ REVOKE EXECUTE ON FUNCTION public.get_absence_report(INTEGER) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_absence_report(INTEGER) TO authenticated;
 
 -- ========================================================
--- SCOPED STUDENT ROSTER (منح النقاط اليدوي / استبدال الهدايا) — CLASS-SCOPED
--- Used by ManualPointsTool.jsx and GiftRedemption.jsx so a servant / class
--- admin / assistant admin can only pick a student to give points or gifts
--- to from their OWN class — never a student who belongs to another class.
--- super_admin still gets the full student roster. Enforced here
--- server-side (not just hidden in the app's UI), same pattern as
--- get_absence_report() above — it can't be bypassed by calling the API
--- directly.
+-- SCOPED STUDENT ROSTER (منح النقاط اليدوي) — CLASS-SCOPED
+-- Used by ManualPointsTool.jsx so a servant / class admin / assistant admin
+-- can only pick a student to give points to from their OWN class — never a
+-- student who belongs to another class. super_admin still gets the full
+-- student roster. Enforced here server-side (not just hidden in the app's
+-- UI), same pattern as get_absence_report() above — it can't be bypassed by
+-- calling the API directly.
 -- ========================================================
 CREATE OR REPLACE FUNCTION public.get_scoped_students()
 RETURNS TABLE (

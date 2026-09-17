@@ -14,12 +14,10 @@ import QRScanner from './components/scanner/QRScanner';
 // Servant Components
 import ClassLeaderboard from './components/servant/ClassLeaderboard';
 import ManualPointsTool from './components/servant/ManualPointsTool';
-import GiftRedemption from './components/servant/GiftRedemption';
 
 // Admin Components
 import Analytics from './components/admin/Analytics';
 import AbsenceTracker from './components/admin/AbsenceTracker';
-import GiftInventory from './components/admin/GiftInventory';
 import UserManagement from './components/admin/UserManagement';
 
 // Student Components
@@ -68,7 +66,6 @@ function MainContent() {
           <>
             {activeTab === 'admin-analytics' && <Analytics />}
             {activeTab === 'admin-efteqad' && <AbsenceTracker />}
-            {activeTab === 'admin-gifts' && <GiftInventory />}
             {activeTab === 'admin-users' && <UserManagement />}
             {/* أمين الخدمة العامة كمان لازم يقدر يشوف رصيد نقاط/كوبونات أي
                 مخدوم — نفس شاشة لوحة الصدارة اللي أمناء الفصول والخدام
@@ -84,7 +81,6 @@ function MainContent() {
             {activeTab === 'scanner' && <QRScanner />}
             {activeTab === 'servant-leaderboard' && <ClassLeaderboard />}
             {activeTab === 'servant-manual-points' && <ManualPointsTool />}
-            {activeTab === 'servant-shop' && <GiftRedemption />}
             {activeTab === 'admin-efteqad' && <AbsenceTracker />}
           </>
         )}

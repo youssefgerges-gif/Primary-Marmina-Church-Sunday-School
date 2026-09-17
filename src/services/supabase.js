@@ -223,9 +223,7 @@ const INITIAL_MOCK_DATA = {
     { id: 'srv-513', name: 'مهرائيل جرجس', role: 'servant', phone: '01200000513', qr_code: 'QR-SRV-513', class_id: 'grade-5' },
   ],
   attendance_logs: [],
-  points_ledger: [],
-  gifts: [],
-  gift_transactions: []
+  points_ledger: []
 };
 
 // Initialize Mock Storage (forced refresh if old dataset exists or roles need sync)
@@ -238,22 +236,15 @@ const getMockData = () => {
   let parsed = JSON.parse(data);
   let updated = false;
 
-  // Purge any legacy demo students starting with 'stu-' and legacy sample gifts
+  // Purge any legacy demo students starting with 'stu-'
   if (parsed.users) {
     const hasDemoStudents = parsed.users.some(u => u.id?.startsWith('stu-') || u.qr_code?.startsWith('QR-STU-'));
     if (hasDemoStudents) {
       parsed.users = parsed.users.filter(u => !(u.id?.startsWith('stu-') || u.qr_code?.startsWith('QR-STU-')));
       parsed.attendance_logs = [];
       parsed.points_ledger = [];
-      parsed.gift_transactions = [];
       updated = true;
     }
-  }
-
-  // Clear legacy mock gifts if present
-  if (parsed.gifts && parsed.gifts.length > 0 && parsed.gifts.some(g => g.id?.startsWith('g-'))) {
-    parsed.gifts = [];
-    updated = true;
   }
 
   // Ensure pre-seeded servants and super admins exist in storage and have updated roles/titles
@@ -478,60 +469,6 @@ export async function getStudentBalance(studentId) {
   }
 }
 
-export async function redeemGift(studentId, giftId, servantId) {
-  if (isSupabaseConfigured()) {
-    // Delegates to the redeem_gift() Postgres function (see schema.sql),
-    // which locks the gift row and does the balance check + all three
-    // writes (gift_transactions insert, points_ledger insert, stock
-    // decrement) in one atomic transaction. This closes the race condition
-    // where two servants redeeming the same gift at the same instant could
-    // both read the old stock, both pass the check, and both decrement it —
-    // requires running the updated schema.sql once in the Supabase SQL
-    // editor so the function exists.
-    const { data, error } = await supabase.rpc('redeem_gift', {
-      p_student_id: studentId,
-      p_gift_id: giftId,
-      p_servant_id: servantId || 'system'
-    });
-
-    if (error) throw new Error(error.message || 'تعذر تنفيذ عملية استبدال الهدية');
-    return data;
-  } else {
-    const db = getMockData();
-    const gift = db.gifts.find(g => g.id === giftId);
-    if (!gift) throw new Error('الهدية غير متوفرة');
-    if (gift.stock <= 0) throw new Error('الهدية نفذت من المخزون!');
-
-    const currentBalance = db.points_ledger
-      .filter(item => item.student_id === studentId)
-      .reduce((sum, item) => sum + Number(item.amount), 0);
-
-    if (currentBalance < gift.point_cost) {
-      throw new Error(`رصيد المخدوم غير كافٍ (${currentBalance} نقطة) للمقايضة مع ${gift.point_cost} نقطة`);
-    }
-
-    db.gift_transactions.push({
-      id: `gtx-${Date.now()}`,
-      student_id: studentId,
-      gift_id: giftId,
-      created_at: new Date().toISOString()
-    });
-
-    db.points_ledger.push({
-      id: `pt-${Date.now()}`,
-      student_id: studentId,
-      amount: -gift.point_cost,
-      reason: `استبدال هدية: ${gift.name}`,
-      servant_id: servantId || 'srv-501',
-      created_at: new Date().toISOString()
-    });
-
-    gift.stock -= 1;
-    saveMockData(db);
-    return { success: true, giftName: gift.name, newBalance: currentBalance - gift.point_cost };
-  }
-}
-
 // Class-scoped absence report: a class admin, assistant admin, or plain
 // servant should only ever see (and follow up on) the students AND fellow
 // servants of their OWN class — never another class's people, and never
@@ -587,11 +524,10 @@ export async function getAbsenceReport(minWeeksAbsent = 2, viewer = null) {
     .sort((a, b) => b.weeks_absent - a.weeks_absent);
 }
 
-// Class-scoped student roster: used by ManualPointsTool.jsx and
-// GiftRedemption.jsx so a servant / class admin / assistant admin can only
-// pick a student to give points or gifts to from their OWN class — never a
-// student who belongs to a different class. Only super_admin gets the full
-// student roster.
+// Class-scoped student roster: used by ManualPointsTool.jsx so a servant /
+// class admin / assistant admin can only pick a student to give points to
+// from their OWN class — never a student who belongs to a different class.
+// Only super_admin gets the full student roster.
 //
 // `viewer` is only used in local/mock mode to replicate that scoping
 // client-side, since there's no real server-side login there to check.
@@ -658,52 +594,6 @@ export async function getServiceStats() {
 // template and edit it). A duplicate sendWhatsAppEfteqad() used to live
 // here, unused by anything — removed to avoid two diverging copies of the
 // same feature.
-
-export async function getGifts() {
-  if (isSupabaseConfigured()) {
-    const { data, error } = await supabase.from('gifts').select('*').order('point_cost', { ascending: true });
-    if (error) throw error;
-    return data;
-  } else {
-    return getMockData().gifts;
-  }
-}
-
-export async function saveGift(giftData) {
-  if (isSupabaseConfigured()) {
-    if (giftData.id) {
-      const { data, error } = await supabase.from('gifts').update(giftData).eq('id', giftData.id).select();
-      if (error) throw error;
-      return data[0];
-    } else {
-      const { data, error } = await supabase.from('gifts').insert([giftData]).select();
-      if (error) throw error;
-      return data[0];
-    }
-  } else {
-    const db = getMockData();
-    if (giftData.id) {
-      const index = db.gifts.findIndex(g => g.id === giftData.id);
-      if (index !== -1) db.gifts[index] = { ...db.gifts[index], ...giftData };
-    } else {
-      const newGift = { ...giftData, id: `g-${Date.now()}` };
-      db.gifts.push(newGift);
-    }
-    saveMockData(db);
-    return giftData;
-  }
-}
-
-export async function deleteGift(giftId) {
-  if (isSupabaseConfigured()) {
-    const { error } = await supabase.from('gifts').delete().eq('id', giftId);
-    if (error) throw error;
-  } else {
-    const db = getMockData();
-    db.gifts = db.gifts.filter(g => g.id !== giftId);
-    saveMockData(db);
-  }
-}
 
 export async function getUsers() {
   if (isSupabaseConfigured()) {

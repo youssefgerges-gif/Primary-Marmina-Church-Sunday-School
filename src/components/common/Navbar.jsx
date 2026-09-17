@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Shield, User, QrCode, Sparkles, Trophy, Gift, Users, CalendarCheck, LogOut } from 'lucide-react';
+import { Award, Shield, User, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import { getStudentBalance } from '../../services/supabase';
@@ -64,14 +64,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   <CalendarCheck className="w-4 h-4 text-rose-500" /> سجل الافتقاد
                 </button>
                 <button
-                  onClick={() => setActiveTab('admin-gifts')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-                    activeTab === 'admin-gifts' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  }`}
-                >
-                  <Gift className="w-4 h-4 text-emerald-500" /> مخزون الهدايا
-                </button>
-                <button
                   onClick={() => setActiveTab('admin-users')}
                   className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'admin-users' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -116,14 +108,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   }`}
                 >
                   <Award className="w-4 h-4 text-indigo-500" /> إضافة نقاط يدوي
-                </button>
-                <button
-                  onClick={() => setActiveTab('servant-shop')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-                    activeTab === 'servant-shop' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  }`}
-                >
-                  <Gift className="w-4 h-4 text-emerald-500" /> متجر الهدايا
                 </button>
                 {/* افتقاد الفصل: أمين الفصل وأمين الفصل المساعد فقط (مش الخادم
                     العادي) — وحتى لو حد وصلّها بطريقة تانية، الداتا نفسها

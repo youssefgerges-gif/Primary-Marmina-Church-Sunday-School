@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Award, Gift, QrCode, CalendarCheck, Users, User } from 'lucide-react';
+import { Trophy, Award, QrCode, CalendarCheck, Users, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function BottomNav({ activeTab, setActiveTab }) {
@@ -40,16 +40,6 @@ export default function BottomNav({ activeTab, setActiveTab }) {
               <QrCode className="w-6 h-6" />
             </button>
 
-            <button
-              onClick={() => setActiveTab('servant-shop')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
-                activeTab === 'servant-shop' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
-              }`}
-            >
-              <Gift className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">الهدايا</span>
-            </button>
-
             {/* افتقاد الفصل: أمين الفصل وأمين الفصل المساعد فقط، على غرار
                 نفس الزرار في القائمة العلوية لسطح المكتب — الداتا نفسها
                 متقفلة على فصلهم بس من قاعدة البيانات بعيدًا عن الواجهة. */}
@@ -87,15 +77,6 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             >
               <CalendarCheck className="w-5 h-5 mb-0.5" />
               <span className="text-[10px]">الافتفاد</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('admin-gifts')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
-                activeTab === 'admin-gifts' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
-              }`}
-            >
-              <Gift className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">المخزون</span>
             </button>
             <button
               onClick={() => setActiveTab('admin-users')}

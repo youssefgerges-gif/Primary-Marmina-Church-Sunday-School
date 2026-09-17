@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Sparkles, Award, Gift, ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react';
+import { Calendar, Sparkles, Award, ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import { getStudentHistory } from '../../services/supabase';
@@ -35,7 +35,7 @@ export default function HistoryTimeline() {
             <Clock className="w-3.5 h-3.5" /> سجل المعاملات والنواط
           </span>
           <h2 className="text-2xl font-black">حركات النقاط والحضور</h2>
-          <p className="text-sky-100 text-xs mt-1">سجل زمني مفصل لعمليات الحضور، الإجابات، واستبدال الهدايا لـ {currentStudent.name}</p>
+          <p className="text-sky-100 text-xs mt-1">سجل زمني مفصل لعمليات الحضور والنقاط لـ {currentStudent.name}</p>
         </div>
         <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-amber-300 shrink-0">
           <Calendar className="w-8 h-8" />
