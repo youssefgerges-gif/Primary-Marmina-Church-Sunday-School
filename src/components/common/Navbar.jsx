@@ -79,6 +79,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <Trophy className="w-4 h-4 text-amber-500" /> نقاط المخدومين
                 </button>
+                <button
+                  onClick={() => setActiveTab('scanner')}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'scanner' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <QrCode className="w-4 h-4" /> تسجيل حضور
+                </button>
               </>
             )}
 

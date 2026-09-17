@@ -91,9 +91,18 @@ export default function QRScanner({ onScanSuccess }) {
               // by pointing the phone at someone else's card, not a selfie).
               // "ideal" (not "exact") so it still falls back gracefully on a
               // laptop with only a front-facing webcam instead of failing.
+              //
+              // IMPORTANT: don't also force aspectRatio inside videoConstraints
+              // (we used to set it to 1.0 here, matching the qrbox above) —
+              // most phone rear cameras can't natively stream a strict 1:1
+              // feed, and forcing it is what caused the black/empty camera
+              // box on Android even after the permission prompt was accepted
+              // (the getUserMedia call "succeeds" but the resulting video
+              // stream never actually renders). The top-level aspectRatio
+              // above already controls the on-screen scanning box shape —
+              // the real camera stream itself should stay unconstrained.
               videoConstraints: {
-                facingMode: { ideal: "environment" },
-                aspectRatio: 1.0
+                facingMode: { ideal: "environment" }
               }
             },
             /* verbose= */ false

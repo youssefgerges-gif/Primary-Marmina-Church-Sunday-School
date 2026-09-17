@@ -96,6 +96,15 @@ export default function BottomNav({ activeTab, setActiveTab }) {
               <Trophy className="w-5 h-5 mb-0.5" />
               <span className="text-[10px]">نقاط المخدومين</span>
             </button>
+            <button
+              onClick={() => setActiveTab('scanner')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'scanner' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <QrCode className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">تسجيل حضور</span>
+            </button>
           </>
         )}
 
