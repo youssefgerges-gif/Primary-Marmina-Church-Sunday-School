@@ -608,6 +608,21 @@ export async function getUsers() {
   return getMockData().users;
 }
 
+// Raw attendance log rows (just user_id + timestamp), for screens that need
+// to work out "attended recently" per-person themselves — e.g. أمين الخدمة
+// العامة's class-roster view in Analytics.jsx, which shows حاضر/غايب for
+// every servant and مخدوم inside a class. Only staff roles can read this
+// (RLS's "Staff can view all attendance" policy — see schema.sql), which is
+// fine since every caller of this function is already staff-only screens.
+export async function getAttendanceLogs() {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.from('attendance_logs').select('user_id, timestamp');
+    if (error) throw error;
+    return data || [];
+  }
+  return getMockData().attendance_logs;
+}
+
 // Generates the same style of short login username used for the existing
 // roster (see schema.sql's backfill): "ADM01", "ADM02"... for general
 // service admins, and the QR code with "QR-" and dashes stripped for

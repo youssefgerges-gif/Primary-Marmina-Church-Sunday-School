@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserCheck, CalendarCheck, Award, TrendingUp, Sparkles, Shield, Crown, User } from 'lucide-react';
-import { getUsers, getLeaderboard, getServiceStats, CLASSES } from '../../services/supabase';
+import { Users, UserCheck, CalendarCheck, Award, TrendingUp, Sparkles, Shield, Crown, User, ChevronLeft } from 'lucide-react';
+import { getUsers, getLeaderboard, getServiceStats, getAttendanceLogs, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import SaintIconArt from '../common/SaintIconArt';
+import ClassRosterModal from './ClassRosterModal';
 
 export default function Analytics() {
   const { refreshKey } = usePoints();
@@ -17,9 +18,15 @@ export default function Analytics() {
     attendanceRate: '0%'
   });
   const [servantsByClass, setServantsByClass] = useState([]);
+  // Kept from the same fetch so clicking into a class (see ClassRosterModal
+  // below) doesn't need its own round-trip — أمين الخدمة العامة taps a class
+  // card and sees who's inside it (خدام + مخدومين) and who's حاضر/غايب.
+  const [allUsers, setAllUsers] = useState([]);
+  const [attendanceLogs, setAttendanceLogs] = useState([]);
+  const [selectedClass, setSelectedClass] = useState(null);
 
   useEffect(() => {
-    Promise.all([getUsers(), getServiceStats()]).then(([users, serviceStats]) => {
+    Promise.all([getUsers(), getServiceStats(), getAttendanceLogs()]).then(([users, serviceStats, logs]) => {
       const allServants = users.filter(u => u.role !== 'student');
       const stuCount = users.filter(u => u.role === 'student').length;
 
@@ -46,6 +53,8 @@ export default function Analytics() {
       });
 
       setServantsByClass(classBreakdown);
+      setAllUsers(users);
+      setAttendanceLogs(logs);
     });
   }, [refreshKey]);
 
@@ -158,20 +167,27 @@ export default function Analytics() {
         <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
           <Crown className="w-5 h-5 text-amber-500" /> صور القديسين وفصول الخدمة الـ 7 وكشوفات الخدام
         </h3>
+        <p className="text-[11px] text-slate-400 font-bold -mt-2">اضغط على أي فصل لعرض الخدام والمخدومين بداخله، ومين حاضر ومين غايب 👇</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {servantsByClass.map(c => (
-            <div key={c.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3 relative overflow-hidden flex flex-col justify-between hover:border-sky-300 transition-colors">
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setSelectedClass(c)}
+              className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3 relative overflow-hidden flex flex-col justify-between hover:border-sky-300 hover:bg-sky-50/50 hover:shadow-md transition-all text-right active:scale-[0.98]"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-amber-300 shrink-0 shadow-sm">
                   <SaintIconArt classId={c.id} className="w-full h-full object-cover" />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <span className="font-black text-slate-900 text-xs block">{c.name}</span>
                   <p className="text-[11px] text-amber-700 font-bold leading-tight mt-0.5">
                     {c.saintName || c.patron}
                   </p>
                 </div>
+                <ChevronLeft className="w-4 h-4 text-sky-400 shrink-0" />
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-slate-200/80">
                 <span className="text-[11px] font-bold text-slate-600">عدد الخدام:</span>
@@ -179,10 +195,18 @@ export default function Analytics() {
                   {c.servantCount} خادم
                 </span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
+
+      <ClassRosterModal
+        isOpen={!!selectedClass}
+        onClose={() => setSelectedClass(null)}
+        classInfo={selectedClass}
+        users={allUsers}
+        attendanceLogs={attendanceLogs}
+      />
 
     </div>
   );

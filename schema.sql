@@ -433,7 +433,7 @@ BEGIN
   RETURN QUERY
   WITH scoped AS (
     SELECT
-      u.id, u.name, u.phone, u.qr_code, u.class_id, u.role,
+      u.id, u.name, u.phone, u.qr_code, u.class_id, u.role, u.created_at,
       (SELECT MAX(al.timestamp) FROM public.attendance_logs al WHERE al.user_id = u.id) AS last_attended_at
     FROM public.users u
     WHERE u.role <> 'super_admin'
@@ -443,8 +443,11 @@ BEGIN
     SELECT
       scoped.id, scoped.name, scoped.phone, scoped.qr_code, scoped.class_id, scoped.role,
       scoped.last_attended_at,
+      -- لسه محضرش أي حضور خالص؟ نحسب عدد الأسابيع من تاريخ إضافته هو
+      -- للنظام (created_at) مش نفترض إنه غايب من أول يوم — عشان الأسماء
+      -- اللي لسه ما بدأتش تستخدم البرنامج فعليًا متتحسبش غايبة على طول.
       (CASE
-        WHEN scoped.last_attended_at IS NULL THEN 4
+        WHEN scoped.last_attended_at IS NULL THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - scoped.created_at)) / 604800))::INTEGER
         ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - scoped.last_attended_at)) / 604800))::INTEGER
       END) AS weeks_absent_calc
     FROM scoped
