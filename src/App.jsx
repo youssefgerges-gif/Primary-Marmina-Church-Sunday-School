@@ -14,6 +14,7 @@ import QRScanner from './components/scanner/QRScanner';
 // Servant Components
 import ClassLeaderboard from './components/servant/ClassLeaderboard';
 import ManualPointsTool from './components/servant/ManualPointsTool';
+import AddStudentTool from './components/servant/AddStudentTool';
 
 // Admin Components
 import Analytics from './components/admin/Analytics';
@@ -72,6 +73,12 @@ function MainContent() {
                 شايفينها، بس هنا بتغطي كل الفصول (نفس الاختيار المتاح أصلاً
                 من قايمة الفصول جوه الشاشة نفسها). */}
             {activeTab === 'servant-leaderboard' && <ClassLeaderboard />}
+            {/* أمين الخدمة العامة أصلاً عنده صلاحية إضافة أي شخص من شاشة
+                "الخدام والمخدومين" (UserManagement) — الشاشة دي هنا مجرد
+                طريقة أسرع لإضافة مخدوم بس من غير المرور على الشاشة الكاملة،
+                نفس الأداة اللي أمناء الفصول بيستخدموها، وبتسمح له كمان
+                باختيار أي فصل (مش مقفول على فصل واحد زيهم). */}
+            {activeTab === 'servant-add-student' && <AddStudentTool />}
             {/* أمين الخدمة العامة ما كانش قدامه أي طريقة يسجل بيها حضور خالص
                 (لا كاميرا ولا تسجيل يدوي) — نفس شاشة الماسح اللي أمناء
                 الفصول/المساعدين/الخدام شايفينها، وبما إنه مش مقفول على فصل
@@ -88,6 +95,12 @@ function MainContent() {
             {activeTab === 'servant-leaderboard' && <ClassLeaderboard />}
             {activeTab === 'servant-manual-points' && <ManualPointsTool />}
             {activeTab === 'admin-efteqad' && <AbsenceTracker />}
+            {/* إضافة مخدوم جديد: أمين الفصل وأمين الفصل المساعد فقط (مش
+                الخادم العادي) — على غرار نفس تقييد افتقاد الفصل فوق. حتى لو
+                حد وصلّها بطريقة تانية، add_scoped_student() في قاعدة
+                البيانات برضو بترفض أي حد مش class_admin/assistant_admin/
+                super_admin، مش مجرد إخفاء الزرار. */}
+            {activeTab === 'servant-add-student' && <AddStudentTool />}
           </>
         )}
 

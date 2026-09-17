@@ -584,6 +584,54 @@ export async function getManualAttendanceRoster(viewer = null) {
   return roster.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 }
 
+// Add a new student (إضافة مخدوم جديد) — class_admin / assistant_admin /
+// super_admin only (a plain servant has no access to this at all, per the
+// request). class_admin/assistant_admin always add into THEIR OWN class;
+// super_admin must specify which class. Against a real Supabase project this
+// is enforced *server-side* inside add_scoped_student() (see schema.sql) —
+// it generates the new person's qr_code/username itself and can't be
+// bypassed by calling the API directly (e.g. to add a non-student, or into
+// another class). `viewer` is only used in local/mock mode to replicate
+// that scoping client-side, since there's no real server-side login there.
+export async function addScopedStudent({ name, phone, class_id } = {}, viewer = null) {
+  const cleanName = (name || '').trim();
+  if (!cleanName) {
+    throw new Error('اسم المخدوم مطلوب');
+  }
+  const cleanPhone = (phone || '').trim();
+
+  if (isSupabaseConfigured()) {
+    const params = { p_name: cleanName, p_phone: cleanPhone || null };
+    if (viewer && viewer.role === 'super_admin') {
+      params.p_class_id = class_id || null;
+    }
+    const { data, error } = await supabase.rpc('add_scoped_student', params);
+    if (error) throw new Error(error.message || 'تعذر إضافة المخدوم');
+    return data && data[0];
+  }
+
+  const db = getMockData();
+  const resolvedClassId = (viewer && viewer.role === 'super_admin')
+    ? (class_id || 'grade-5')
+    : (viewer?.class_id || 'grade-5');
+  const qrCode = `QR-STU-${Math.floor(10000 + Math.random() * 90000)}`;
+  const username = qrCode.replace('QR-', '').replace(/-/g, '');
+  const newStudent = {
+    id: `usr-${Date.now()}`,
+    name: cleanName,
+    role: 'student',
+    phone: cleanPhone || null,
+    class_id: resolvedClassId,
+    title: 'مخدوم',
+    qr_code: qrCode,
+    username,
+    created_at: new Date().toISOString()
+  };
+  db.users.push(newStudent);
+  saveMockData(db);
+  return newStudent;
+}
+
 // Real dashboard stats: total points ever awarded, and the % of students
 // who attended within the last 7 days. Previously these were hardcoded
 // to 0 / 100% in Analytics.jsx and never reflected real data.

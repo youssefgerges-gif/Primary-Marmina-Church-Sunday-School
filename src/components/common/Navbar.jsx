@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Shield, User, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut } from 'lucide-react';
+import { Award, Shield, User, UserPlus, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import { getStudentBalance } from '../../services/supabase';
@@ -80,6 +80,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   <Trophy className="w-4 h-4 text-amber-500" /> نقاط المخدومين
                 </button>
                 <button
+                  onClick={() => setActiveTab('servant-add-student')}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'servant-add-student' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <UserPlus className="w-4 h-4 text-emerald-600" /> إضافة مخدوم
+                </button>
+                <button
                   onClick={() => setActiveTab('scanner')}
                   className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'scanner' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -129,6 +137,20 @@ export default function Navbar({ activeTab, setActiveTab }) {
                     }`}
                   >
                     <CalendarCheck className="w-4 h-4 text-rose-500" /> افتقاد الفصل
+                  </button>
+                )}
+                {/* إضافة مخدوم: أمين الفصل وأمين الفصل المساعد فقط (مش
+                    الخادم العادي)، على غرار افتقاد الفصل فوق — والداتا نفسها
+                    متقفلة على فصلهم بس من add_scoped_student() في قاعدة
+                    البيانات، مش مجرد إخفاء الزرار. */}
+                {(role === 'class_admin' || role === 'assistant_admin') && (
+                  <button
+                    onClick={() => setActiveTab('servant-add-student')}
+                    className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                      activeTab === 'servant-add-student' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    <UserPlus className="w-4 h-4 text-emerald-600" /> إضافة مخدوم
                   </button>
                 )}
               </>

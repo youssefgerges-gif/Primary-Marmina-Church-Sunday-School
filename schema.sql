@@ -563,3 +563,82 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.get_manual_attendance_roster() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_manual_attendance_roster() TO authenticated;
+
+-- ========================================================
+-- ADD A NEW STUDENT (إضافة مخدوم جديد) — CLASS-SCOPED
+-- Requested 2026-09-17: class_admin, assistant_admin, and super_admin should
+-- all be able to add a new مخدوم (student) to the roster. Before this, only
+-- super_admin could add ANY person at all, through the "Super admin can
+-- insert users" RLS policy on public.users (see the RLS LOCKDOWN section
+-- above) — class_admin/assistant_admin had no write access to `users`
+-- whatsoever, so they couldn't register a new student even for their own
+-- class.
+--
+-- Rather than loosening that RLS INSERT policy (which would need extra
+-- WITH CHECK logic duplicated across every future caller to stay safe),
+-- this is a narrow SECURITY DEFINER function, same pattern as
+-- get_absence_report() / get_scoped_students() / get_manual_attendance_
+-- roster() above — the general RLS policy is untouched:
+--   - class_admin / assistant_admin -> can only add a STUDENT, and only into
+--     THEIR OWN class (their own current_user_class_id() is used
+--     regardless of anything the caller sends — can't be spoofed via the
+--     API to add someone into another class, or as a non-student role).
+--   - super_admin -> can add a student into ANY class (must pass p_class_id).
+--   - every other role (servant, student, or not logged in) -> rejected.
+-- The new person's qr_code/username are generated here, the same style as
+-- the rest of the roster (QR-STU-##### / STU#####), so a freshly-added
+-- student immediately has a working QR card and login code, exactly like
+-- one added through super_admin's full "إدارة المستخدمين" screen.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.add_scoped_student(
+  p_name TEXT,
+  p_phone TEXT DEFAULT NULL,
+  p_class_id TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  qr_code TEXT,
+  username TEXT,
+  class_id TEXT,
+  title TEXT
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+  v_qr_code TEXT;
+  v_username TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role NOT IN ('class_admin', 'assistant_admin', 'super_admin') THEN
+    RAISE EXCEPTION 'غير مصرح لك بإضافة مخدوم جديد';
+  END IF;
+
+  IF p_name IS NULL OR TRIM(p_name) = '' THEN
+    RAISE EXCEPTION 'اسم المخدوم مطلوب';
+  END IF;
+
+  IF v_role = 'super_admin' THEN
+    IF p_class_id IS NULL OR TRIM(p_class_id) = '' THEN
+      RAISE EXCEPTION 'يجب اختيار الفصل الدراسي';
+    END IF;
+    v_class_id := p_class_id;
+  ELSE
+    -- class_admin / assistant_admin: always their own class, no matter what
+    -- (if anything) was sent — enforced here, not just hidden in the UI.
+    v_class_id := public.current_user_class_id();
+  END IF;
+
+  v_qr_code := 'QR-STU-' || LPAD(FLOOR(RANDOM() * 90000 + 10000)::TEXT, 5, '0');
+  v_username := UPPER(REPLACE(REPLACE(v_qr_code, 'QR-', ''), '-', ''));
+
+  RETURN QUERY
+  INSERT INTO public.users (name, role, phone, class_id, title, qr_code, username)
+  VALUES (TRIM(p_name), 'student', NULLIF(TRIM(p_phone), ''), v_class_id, 'مخدوم', v_qr_code, v_username)
+  RETURNING users.id, users.name, users.qr_code, users.username, users.class_id, users.title;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.add_scoped_student(TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.add_scoped_student(TEXT, TEXT, TEXT) TO authenticated;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Award, QrCode, CalendarCheck, Users, User } from 'lucide-react';
+import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function BottomNav({ activeTab, setActiveTab }) {
@@ -52,6 +52,21 @@ export default function BottomNav({ activeTab, setActiveTab }) {
               >
                 <CalendarCheck className="w-5 h-5 mb-0.5" />
                 <span className="text-[10px]">افتقاد الفصل</span>
+              </button>
+            )}
+
+            {/* إضافة مخدوم: أمين الفصل وأمين الفصل المساعد فقط، على غرار
+                افتقاد الفصل فوق — الداتا نفسها متقفلة على فصلهم بس من
+                add_scoped_student() في قاعدة البيانات. */}
+            {(role === 'class_admin' || role === 'assistant_admin') && (
+              <button
+                onClick={() => setActiveTab('servant-add-student')}
+                className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                  activeTab === 'servant-add-student' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+                }`}
+              >
+                <UserPlus className="w-5 h-5 mb-0.5" />
+                <span className="text-[10px]">إضافة مخدوم</span>
               </button>
             )}
           </>
