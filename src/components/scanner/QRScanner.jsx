@@ -1,17 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone } from 'lucide-react';
-import { recordAttendance } from '../../services/supabase';
+import { recordAttendance, getManualAttendanceRoster, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
 
+// Matches Navbar.jsx's role labels — a خادم عادي only ever sees مخدومين هنا،
+// لكن أمين الفصل/المساعد بيشوفوا خدام تانيين كمان، فمحتاجين نعرض دور كل حد
+// صح (كانت قبل كده بتتعرض كلها "أمين خدمة" حتى لو الشخص أمين فصل عادي).
+const ROLE_LABELS = {
+  class_admin: 'أمين فصل',
+  assistant_admin: 'أمين فصل مساعد',
+  servant: 'خادم',
+  student: 'مخدوم'
+};
+
 export default function QRScanner({ onScanSuccess }) {
   const { showToast, triggerRefresh } = usePoints();
-  const { allUsers } = useAuth();
+  const { currentUser } = useAuth();
   const [lastScannedUser, setLastScannedUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scanMethod, setScanMethod] = useState('camera'); // 'camera' or 'picker'
   const scannerRef = useRef(null);
+
+  // Class-scoped, role-differentiated roster for the manual picker tab —
+  // servant only ever sees مخدومين of their own class; class_admin /
+  // assistant_admin see مخدومين AND خدام of their own class (see
+  // get_manual_attendance_roster() in schema.sql for where this is actually
+  // enforced server-side). currentUser.role/class_id here is only a fallback
+  // for local/mock mode; against a real Supabase project the server checks
+  // who's actually logged in itself, so this can't be spoofed from the app.
+  const [rosterUsers, setRosterUsers] = useState([]);
+  const isScoped = currentUser && currentUser.role !== 'super_admin';
+  const scopedClassName = isScoped ? CLASSES.find(c => c.id === currentUser.class_id)?.name : null;
+
+  useEffect(() => {
+    getManualAttendanceRoster(currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null)
+      .then(setRosterUsers)
+      .catch(() => setRosterUsers([]));
+  }, [currentUser?.role, currentUser?.class_id]);
 
   // Process QR string
   const handleQRProcess = async (qrString) => {
@@ -130,7 +157,7 @@ export default function QRScanner({ onScanSuccess }) {
               scanMethod === 'picker' ? 'bg-white text-sky-800 shadow-md' : 'text-white/80 hover:text-white'
             }`}
           >
-            <Smartphone className="w-4 h-4" /> اختيار كارت للتجربة (Quick Test)
+            <Smartphone className="w-4 h-4" /> تسجيل الحضور يدويًا
           </button>
         </div>
       </div>
@@ -151,41 +178,48 @@ export default function QRScanner({ onScanSuccess }) {
           </div>
         </div>
       ) : (
-        /* QUICK TEST PICKER FOR DESKTOP */
+        /* MANUAL (NO-CAMERA) ATTENDANCE PICKER */
         <div className="bg-white rounded-3xl p-6 shadow-lg border border-slate-100 space-y-4 transition-colors duration-300">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-sky-600" /> اختر مخدوم محاكاة لمسح كارت QR
+              <Smartphone className="w-4 h-4 text-sky-600" />
+              {isScoped
+                ? `تسجيل حضور — فصل ${scopedClassName || ''} فقط`
+                : 'اختر شخص لتسجيل حضوره'}
             </h3>
-            <span className="text-xs text-slate-500 font-medium">اضغط للمسح الفوري</span>
+            <span className="text-xs text-slate-500 font-medium">اضغط للتسجيل الفوري</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {allUsers.map((user) => (
-              <button
-                key={user.id}
-                onClick={() => handleQRProcess(user.qr_code)}
-                disabled={loading}
-                className="p-3.5 rounded-2xl border border-slate-200 hover:border-sky-500 bg-slate-50 hover:bg-sky-50/50 flex items-center justify-between text-right transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-sky-100 group-hover:bg-sky-600 text-sky-700 group-hover:text-white flex items-center justify-center font-bold text-sm transition-colors">
-                    {user.name[0]}
+          {rosterUsers.length === 0 ? (
+            <p className="text-center text-slate-400 text-xs py-8">لا يوجد أشخاص لعرضهم في فصلك حاليًا.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {rosterUsers.map((user) => (
+                <button
+                  key={user.id}
+                  onClick={() => handleQRProcess(user.qr_code)}
+                  disabled={loading}
+                  className="p-3.5 rounded-2xl border border-slate-200 hover:border-sky-500 bg-slate-50 hover:bg-sky-50/50 flex items-center justify-between text-right transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-sky-100 group-hover:bg-sky-600 text-sky-700 group-hover:text-white flex items-center justify-center font-bold text-sm transition-colors">
+                      {user.name[0]}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-xs">{user.name}</h4>
+                      <span className="text-[10px] text-slate-500 block">
+                        {ROLE_LABELS[user.role] || user.role} | {user.qr_code}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-slate-800 text-xs">{user.name}</h4>
-                    <span className="text-[10px] text-slate-500 block">
-                      {user.role === 'student' ? 'مخدوم' : user.role === 'servant' ? 'خادم' : 'أمين خدمة'} | {user.qr_code}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="px-2.5 py-1 rounded-lg bg-sky-600 text-white font-bold text-[10px] group-hover:scale-105 transition-transform">
-                  مسح QR ⚡️
-                </div>
-              </button>
-            ))}
-          </div>
+                  <div className="px-2.5 py-1 rounded-lg bg-sky-600 text-white font-bold text-[10px] group-hover:scale-105 transition-transform">
+                    تسجيل ⚡️
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

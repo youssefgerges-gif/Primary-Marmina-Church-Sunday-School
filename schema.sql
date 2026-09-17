@@ -507,3 +507,59 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.get_scoped_students() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_scoped_students() TO authenticated;
+
+-- ========================================================
+-- MANUAL ATTENDANCE ROSTER (تسجيل الحضور يدويًا — القائمة بدون كاميرا)
+-- CLASS-SCOPED, AND (UNLIKE get_scoped_students() ABOVE) ROLE-DIFFERENTIATED:
+-- Used by QRScanner.jsx's manual/no-camera tab (used to record attendance by
+-- picking a card from a list instead of scanning with the phone's camera).
+-- Who sees what is NOT the same for every staff role here:
+--   - servant                        -> only مخدومين (students) of their own class
+--   - class_admin / assistant_admin  -> both مخدومين AND خدام (students,
+--                                        servants, and each other) of their
+--                                        own class
+--   - super_admin                    -> everyone, every class (kept for
+--                                        consistency with every other scoped
+--                                        function here, even though the app's
+--                                        UI never actually shows super_admin
+--                                        a "scanner" tab today)
+-- Enforced here server-side, same pattern as get_absence_report() /
+-- get_scoped_students() above — can't be bypassed by calling the API directly.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.get_manual_attendance_roster()
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  role TEXT,
+  qr_code TEXT,
+  class_id TEXT
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role = 'student' THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض قائمة تسجيل الحضور اليدوي';
+  END IF;
+
+  IF v_role <> 'super_admin' THEN
+    v_class_id := public.current_user_class_id();
+  END IF;
+
+  RETURN QUERY
+  SELECT u.id, u.name, u.role, u.qr_code, u.class_id
+  FROM public.users u
+  WHERE u.role <> 'super_admin'
+    AND (
+      v_role = 'super_admin'
+      OR (v_role = 'servant' AND u.class_id = v_class_id AND u.role = 'student')
+      OR (v_role IN ('class_admin', 'assistant_admin') AND u.class_id = v_class_id)
+    )
+  ORDER BY u.name;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_manual_attendance_roster() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_manual_attendance_roster() TO authenticated;

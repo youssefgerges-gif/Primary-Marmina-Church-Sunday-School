@@ -549,6 +549,41 @@ export async function getScopedStudents(viewer = null) {
   return students.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 }
 
+// Class-scoped roster for QRScanner.jsx's manual/no-camera picker tab
+// ("تسجيل الحضور يدويًا") — used to record attendance by picking a card
+// instead of scanning with the camera. Unlike getScopedStudents() above,
+// what's visible here is NOT the same for every staff role:
+//   - servant                       -> only مخدومين (students) of their own class
+//   - class_admin / assistant_admin -> مخدومين AND خدام of their own class
+//   - super_admin                   -> everyone (not currently reachable from
+//                                       the app's UI, which never gives
+//                                       super_admin a "scanner" tab — kept
+//                                       for consistency with every other
+//                                       scoped function here)
+//
+// `viewer` is only used in local/mock mode to replicate that scoping
+// client-side, since there's no real server-side login there to check.
+// Against a real Supabase project the scoping is enforced *server-side*
+// inside get_manual_attendance_roster() (see schema.sql) based on who's
+// actually logged in, so it can't be bypassed by calling the API directly.
+export async function getManualAttendanceRoster(viewer = null) {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_manual_attendance_roster');
+    if (error) throw new Error(error.message || 'تعذر تحميل قائمة تسجيل الحضور اليدوي');
+    return data || [];
+  }
+
+  const db = getMockData();
+  let roster = db.users.filter(u => u.role !== 'super_admin');
+  if (viewer && viewer.role !== 'super_admin' && viewer.class_id) {
+    roster = roster.filter(u => u.class_id === viewer.class_id);
+    if (viewer.role === 'servant') {
+      roster = roster.filter(u => u.role === 'student');
+    }
+  }
+  return roster.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+}
+
 // Real dashboard stats: total points ever awarded, and the % of students
 // who attended within the last 7 days. Previously these were hardcoded
 // to 0 / 100% in Analytics.jsx and never reflected real data.
