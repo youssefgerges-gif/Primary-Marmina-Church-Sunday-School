@@ -30,17 +30,24 @@ export default function AbsenceTracker() {
   const isScoped = currentUser && currentUser.role !== 'super_admin';
   const scopedClassName = isScoped ? CLASSES.find(c => c.id === currentUser.class_id)?.name : null;
 
+  // Always fetch the FULL roster (everyone in scope), not just people who
+  // are currently absent — get_absence_report(0, ...) in schema.sql computes
+  // weeks_absent via GREATEST(0, ...) so it's never negative, meaning
+  // min_weeks = 0 matches every single person in scope unconditionally.
+  // `minWeeks` is then used purely client-side below as the "considered
+  // irregular starting from how many weeks" threshold for the status badge —
+  // it no longer filters who appears in the list at all.
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
-    getAbsenceReport(minWeeks, currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null).then(data => {
+    getAbsenceReport(0, currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null).then(data => {
       if (isMounted) {
         setAbsentStudents(data);
         setLoading(false);
       }
     });
     return () => { isMounted = false; };
-  }, [minWeeks, currentUser?.role, currentUser?.class_id]);
+  }, [currentUser?.role, currentUser?.class_id]);
 
   const roleBadge = (role) => {
     const styles = {
@@ -70,26 +77,27 @@ export default function AbsenceTracker() {
   return (
     <div className="space-y-6 dir-rtl text-right">
       
-      {/* Banner */}
-      <div className="bg-gradient-to-r from-rose-600 via-rose-700 to-red-700 rounded-3xl p-6 text-white shadow-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 relative overflow-hidden">
-        <div>
+      {/* Banner — the Good Shepherd image is now the full banner background
+          itself (not a small icon box), with a dark rose overlay on top so
+          the white text stays readable. */}
+      <div className="relative rounded-3xl text-white shadow-md overflow-hidden">
+        <img
+          src={goodShepherdImg}
+          alt="الراعي الصالح"
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ objectPosition: 'center 35%' }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-rose-950/90 via-rose-900/80 to-rose-900/55"></div>
+        <div className="relative p-6">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold mb-2">
             <CalendarX className="w-3.5 h-3.5" /> متابعة افتقاد الغائبين{scopedClassName ? ` — ${scopedClassName} فقط` : ''}
           </span>
           <h2 className="text-xl sm:text-2xl font-black">سجل ورسائل الافتقاد الرعوي</h2>
-          <p className="text-rose-100 text-xs mt-1">
+          <p className="text-rose-100 text-xs mt-1 max-w-xl">
             {isScoped
               ? `حصر مخدومي وخدام فصل "${scopedClassName || ''}" المنقطعين أو الغائبين وإرسال رسائل افتقاد مخصصة عبر الواتساب`
               : 'حصر كل المخدومين والخدام المنقطعين أو الغائبين في كل الفصول وإرسال رسائل افتقاد وتنبيهات مخصصة عبر الواتساب'}
           </p>
-        </div>
-        <div className="w-16 h-16 rounded-2xl border border-white/20 shrink-0 shadow-inner self-start sm:self-auto overflow-hidden">
-          <img
-            src={goodShepherdImg}
-            alt="الراعي الصالح"
-            className="w-full h-full object-cover"
-            style={{ objectPosition: 'center 35%' }}
-          />
         </div>
       </div>
 
@@ -123,21 +131,21 @@ export default function AbsenceTracker() {
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-500" />
             <h3 className="font-extrabold text-slate-900 text-base">
-              {isScoped ? `قائمة ${personTypeLabel} الغائبين — فصل ${scopedClassName || ''} فقط` : `قائمة ${personTypeLabel} الغائبين (كل الفصول)`}
+              {isScoped ? `قائمة ${personTypeLabel} — فصل ${scopedClassName || ''} فقط` : `قائمة ${personTypeLabel} (كل الفصول)`}
             </h3>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-600">تصفية حسب أسابيع الغياب:</span>
+            <span className="text-xs font-bold text-slate-600">اعتبار الحالة "غير منتظم" لو انقطع:</span>
             <select
               value={minWeeks}
               onChange={(e) => setMinWeeks(Number(e.target.value))}
               className="bg-slate-50 text-slate-900 font-bold text-xs py-2 px-3 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-rose-500 focus:border-rose-500 cursor-pointer transition-all"
             >
-              <option value={1}>غائب أسبوع واحد فأكثر</option>
-              <option value={2}>غائب أسبوعين فأكثر (إجباري افتقاد)</option>
-              <option value={3}>غائب 3 أسابيع فأكثر</option>
-              <option value={4}>انقطاع تام (4 أسابيع فأكثر)</option>
+              <option value={1}>أسبوع واحد فأكثر</option>
+              <option value={2}>أسبوعين فأكثر (الافتراضي)</option>
+              <option value={3}>3 أسابيع فأكثر</option>
+              <option value={4}>4 أسابيع فأكثر (انقطاع تام)</option>
             </select>
           </div>
         </div>
@@ -146,8 +154,8 @@ export default function AbsenceTracker() {
         {loading ? (
           <div className="py-12 text-center text-slate-400 font-bold text-sm">جاري حصر كشوفات الغياب... ⏳</div>
         ) : visibleList.length === 0 ? (
-          <div className="py-12 text-center text-emerald-700 font-bold text-sm bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-            🎉 رائع جداً! لا يوجد من {personTypeLabel} {isScoped ? `في فصل ${scopedClassName || ''}` : ''} غائبين أكثر من {minWeeks} أسابيع حالياً.
+          <div className="py-12 text-center text-slate-400 font-bold text-sm bg-slate-50 border border-slate-100 rounded-2xl p-4">
+            لا يوجد {personTypeLabel} {isScoped ? `في فصل ${scopedClassName || ''}` : ''} مسجلين حالياً.
           </div>
         ) : (
           <>
@@ -172,7 +180,14 @@ export default function AbsenceTracker() {
                           {s.name[0]}
                         </div>
                         <div>
-                          <div className="text-slate-900 font-bold">{s.name}</div>
+                          <div className="text-slate-900 font-bold flex items-center gap-1.5">
+                            <span>{s.name}</span>
+                            {s.weeks_absent < minWeeks ? (
+                              <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[9px] inline-flex items-center gap-0.5 shrink-0">✅ منتظم</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[9px] inline-flex items-center gap-0.5 shrink-0">⚠️ غير منتظم</span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-slate-400 font-normal">كود: {s.qr_code}</span>
                         </div>
                       </td>
@@ -213,7 +228,14 @@ export default function AbsenceTracker() {
                       {s.name[0]}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold text-slate-900 text-sm truncate">{s.name}</p>
+                      <p className="font-bold text-slate-900 text-sm truncate flex items-center gap-1.5">
+                        <span className="truncate">{s.name}</span>
+                        {s.weeks_absent < minWeeks ? (
+                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[9px] shrink-0">✅ منتظم</span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[9px] shrink-0">⚠️ غير منتظم</span>
+                        )}
+                      </p>
                       <p className="text-[10px] text-slate-400 truncate">كود: {s.qr_code}</p>
                     </div>
                     <div className="shrink-0">{roleBadge(s.role)}</div>
