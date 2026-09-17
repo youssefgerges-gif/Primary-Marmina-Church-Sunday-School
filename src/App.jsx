@@ -70,6 +70,11 @@ function MainContent() {
             {activeTab === 'admin-efteqad' && <AbsenceTracker />}
             {activeTab === 'admin-gifts' && <GiftInventory />}
             {activeTab === 'admin-users' && <UserManagement />}
+            {/* أمين الخدمة العامة كمان لازم يقدر يشوف رصيد نقاط/كوبونات أي
+                مخدوم — نفس شاشة لوحة الصدارة اللي أمناء الفصول والخدام
+                شايفينها، بس هنا بتغطي كل الفصول (نفس الاختيار المتاح أصلاً
+                من قايمة الفصول جوه الشاشة نفسها). */}
+            {activeTab === 'servant-leaderboard' && <ClassLeaderboard />}
           </>
         )}
 

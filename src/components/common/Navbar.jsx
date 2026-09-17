@@ -79,6 +79,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <Users className="w-4 h-4 text-sky-600" /> الخدام والمخدومين
                 </button>
+                <button
+                  onClick={() => setActiveTab('servant-leaderboard')}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'servant-leaderboard' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <Trophy className="w-4 h-4 text-amber-500" /> نقاط المخدومين
+                </button>
               </>
             )}
 

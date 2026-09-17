@@ -106,6 +106,15 @@ export default function BottomNav({ activeTab, setActiveTab }) {
               <Users className="w-5 h-5 mb-0.5" />
               <span className="text-[10px]">المستخدمين</span>
             </button>
+            <button
+              onClick={() => setActiveTab('servant-leaderboard')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                activeTab === 'servant-leaderboard' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Trophy className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px]">نقاط المخدومين</span>
+            </button>
           </>
         )}
 
