@@ -52,13 +52,20 @@ export default function StudentCard() {
             if this class has no saint image assigned) */}
         {saintImage ? (
           <>
+            {/* Blurred ambient background to fill full card aspect ratio */}
             <img
               src={saintImage}
               alt=""
-              className="absolute inset-0 w-full h-full object-cover"
-              style={{ objectPosition: 'center 25%' }}
+              className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-60"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-900/70 to-slate-950/90" />
+            {/* Full uncropped saint portrait */}
+            <img
+              src={saintImage}
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain p-1 opacity-80"
+              style={{ objectPosition: 'center center' }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-900/50 to-slate-950/85" />
           </>
         ) : (
           <div className="absolute inset-0 bg-gradient-to-tr from-sky-600 via-indigo-600 to-amber-600" />

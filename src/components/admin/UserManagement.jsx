@@ -581,13 +581,20 @@ export default function UserManagement() {
                   these portrait icons are taller than the card is wide. */}
               {SAINT_IMAGES[selectedQRUser.class_id] ? (
                 <>
+                  {/* Blurred ambient background to fill full card aspect ratio */}
                   <img
                     src={SAINT_IMAGES[selectedQRUser.class_id]}
                     alt=""
-                    className="absolute inset-0 w-full h-full object-cover"
-                    style={{ objectPosition: 'center 25%' }}
+                    className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-60"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-900/70 to-slate-950/90" />
+                  {/* Full uncropped saint portrait */}
+                  <img
+                    src={SAINT_IMAGES[selectedQRUser.class_id]}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-contain p-1 opacity-80"
+                    style={{ objectPosition: 'center center' }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-900/50 to-slate-950/85" />
                 </>
               ) : (
                 <div className="absolute inset-0 bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-700 flex items-center justify-center">
@@ -666,13 +673,20 @@ export default function UserManagement() {
                 >
                   {SAINT_IMAGES[u.class_id] ? (
                     <>
+                      {/* Blurred ambient background to fill full card aspect ratio */}
                       <img
                         src={SAINT_IMAGES[u.class_id]}
                         alt=""
-                        className="absolute inset-0 w-full h-full object-cover"
-                        style={{ objectPosition: 'center 25%' }}
+                        className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-60"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/75 via-slate-900/55 to-slate-950/85" />
+                      {/* Full uncropped saint portrait */}
+                      <img
+                        src={SAINT_IMAGES[u.class_id]}
+                        alt=""
+                        className="absolute inset-0 w-full h-full object-contain p-1 opacity-80"
+                        style={{ objectPosition: 'center center' }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-900/50 to-slate-950/85" />
                     </>
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-tr from-sky-700 via-indigo-700 to-purple-800 flex items-center justify-center">
