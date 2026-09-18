@@ -80,6 +80,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   <Trophy className="w-4 h-4 text-amber-500" /> نقاط المخدومين
                 </button>
                 <button
+                  onClick={() => setActiveTab('servant-manual-points')}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'servant-manual-points' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <Award className="w-4 h-4 text-indigo-500" /> إضافة نقاط
+                </button>
+                <button
                   onClick={() => setActiveTab('servant-add-student')}
                   className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-add-student' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'

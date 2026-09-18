@@ -7,35 +7,41 @@ export default function BottomNav({ activeTab, setActiveTab }) {
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200 shadow-lg px-2 py-1.5 dir-rtl transition-colors duration-300">
-      <div className="flex items-center justify-around">
-        
+      {/* من 2026-09-18: الصفوف بقى فيها أزرار أكتر من قبل (إضافة مخدوم،
+          وإضافة نقاط لأمين الخدمة كمان)، فبقى ممكن ميبقوش كلهم مرتاحين في
+          سطر واحد على موبايل ضيق. بدل ما نسيبهم يتزنقوا/يلفوا على سطر تاني
+          (صعب يتلمسوا وسهل حد ميلاحظهمش)، الصف بقى يعمل سكرول أفقي بدل كده
+          — كل زرار فاضل بحجمه الطبيعي وسهل تلمسه بالسحب، وscrollbar
+          اتخفى (no-scrollbar في index.css) عشان الشكل يفضل نضيف. */}
+      <div className="flex items-center justify-around gap-1 overflow-x-auto no-scrollbar">
+
         {/* SERVANT / CLASS ADMIN MOBILE NAV */}
         {(role === 'class_admin' || role === 'assistant_admin' || role === 'servant') && (
           <>
             <button
               onClick={() => setActiveTab('servant-leaderboard')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                 activeTab === 'servant-leaderboard' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <Trophy className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">الصدارة</span>
+              <span className="text-[10px] whitespace-nowrap">الصدارة</span>
             </button>
 
             <button
               onClick={() => setActiveTab('servant-manual-points')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                 activeTab === 'servant-manual-points' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <Award className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">إضافة نقاط</span>
+              <span className="text-[10px] whitespace-nowrap">إضافة نقاط</span>
             </button>
 
             {/* Quick QR Scan Action Button */}
             <button
               onClick={() => setActiveTab('scanner')}
-              className="w-12 h-12 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-sky-600/40 -mt-6 border-4 border-white transition-transform active:scale-95"
+              className="w-12 h-12 flex-shrink-0 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-sky-600/40 -mt-6 border-4 border-white transition-transform active:scale-95"
             >
               <QrCode className="w-6 h-6" />
             </button>
@@ -46,12 +52,12 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             {(role === 'class_admin' || role === 'assistant_admin') && (
               <button
                 onClick={() => setActiveTab('admin-efteqad')}
-                className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                   activeTab === 'admin-efteqad' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
                 }`}
               >
                 <CalendarCheck className="w-5 h-5 mb-0.5" />
-                <span className="text-[10px]">افتقاد الفصل</span>
+                <span className="text-[10px] whitespace-nowrap">افتقاد الفصل</span>
               </button>
             )}
 
@@ -61,12 +67,12 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             {(role === 'class_admin' || role === 'assistant_admin') && (
               <button
                 onClick={() => setActiveTab('servant-add-student')}
-                className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                   activeTab === 'servant-add-student' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
                 }`}
               >
                 <UserPlus className="w-5 h-5 mb-0.5" />
-                <span className="text-[10px]">إضافة مخدوم</span>
+                <span className="text-[10px] whitespace-nowrap">إضافة مخدوم</span>
               </button>
             )}
           </>
@@ -77,48 +83,70 @@ export default function BottomNav({ activeTab, setActiveTab }) {
           <>
             <button
               onClick={() => setActiveTab('admin-analytics')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                 activeTab === 'admin-analytics' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <Trophy className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">الإحصائيات</span>
+              <span className="text-[10px] whitespace-nowrap">الإحصائيات</span>
             </button>
             <button
               onClick={() => setActiveTab('admin-efteqad')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                 activeTab === 'admin-efteqad' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <CalendarCheck className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">الافتفاد</span>
+              <span className="text-[10px] whitespace-nowrap">الافتفاد</span>
             </button>
             <button
               onClick={() => setActiveTab('admin-users')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                 activeTab === 'admin-users' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <Users className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">المستخدمين</span>
+              <span className="text-[10px] whitespace-nowrap">المستخدمين</span>
             </button>
             <button
               onClick={() => setActiveTab('servant-leaderboard')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                 activeTab === 'servant-leaderboard' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <Trophy className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">نقاط المخدومين</span>
+              <span className="text-[10px] whitespace-nowrap">نقاط المخدومين</span>
+            </button>
+            {/* طلب 2026-09-18: أمين الخدمة العامة يقدر يزود/يخصم نقاط بنفسه
+                برضو، مش بس يشوفها — نفس أداة "إضافة نقاط" اللي أمناء
+                الفصول/المساعدين/الخدام شايفينها، شغالة تلقائيًا لكل
+                الفصول لأمين الخدمة من غير أي تعديل في قاعدة البيانات. */}
+            <button
+              onClick={() => setActiveTab('servant-manual-points')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'servant-manual-points' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Award className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">إضافة نقاط</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('servant-add-student')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'servant-add-student' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <UserPlus className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">إضافة مخدوم</span>
             </button>
             <button
               onClick={() => setActiveTab('scanner')}
-              className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
                 activeTab === 'scanner' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <QrCode className="w-5 h-5 mb-0.5" />
-              <span className="text-[10px]">تسجيل حضور</span>
+              <span className="text-[10px] whitespace-nowrap">تسجيل حضور</span>
             </button>
           </>
         )}
@@ -128,21 +156,21 @@ export default function BottomNav({ activeTab, setActiveTab }) {
           <>
             <button
               onClick={() => setActiveTab('student-card')}
-              className={`flex flex-col items-center py-1 px-4 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-4 rounded-xl transition-all ${
                 activeTab === 'student-card' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <User className="w-5 h-5 mb-0.5" />
-              <span className="text-[11px]">الكارت الرقمي</span>
+              <span className="text-[11px] whitespace-nowrap">الكارت الرقمي</span>
             </button>
             <button
               onClick={() => setActiveTab('student-history')}
-              className={`flex flex-col items-center py-1 px-4 rounded-xl transition-all ${
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-4 rounded-xl transition-all ${
                 activeTab === 'student-history' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
               }`}
             >
               <CalendarCheck className="w-5 h-5 mb-0.5" />
-              <span className="text-[11px]">سجل الحضور والنقاط</span>
+              <span className="text-[11px] whitespace-nowrap">سجل الحضور والنقاط</span>
             </button>
           </>
         )}

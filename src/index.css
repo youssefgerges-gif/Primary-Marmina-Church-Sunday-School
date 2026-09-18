@@ -14,6 +14,21 @@
   direction: rtl;
 }
 
+/* Mobile bottom nav bar: some roles (class_admin/assistant_admin,
+   super_admin) now have more buttons than comfortably fit on a narrow
+   phone screen in one row. Rather than let them silently shrink/wrap onto
+   a second line (hard to tap, easy to miss), the row scrolls horizontally
+   instead — every button stays full-size and reachable via a swipe, with
+   the scrollbar itself hidden since the row already visually implies
+   "more" via the icons peeking at the edge. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Custom UI Polish & Animations */
 .glass-card {
   background: rgba(255, 255, 255, 0.85);
