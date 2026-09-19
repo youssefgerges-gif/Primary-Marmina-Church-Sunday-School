@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserCheck, CalendarCheck, Award, TrendingUp, Sparkles, Shield, Crown, User, ChevronLeft } from 'lucide-react';
-import { getUsers, getLeaderboard, getServiceStats, getAttendanceLogs, CLASSES } from '../../services/supabase';
+import { Users, UserCheck, Award, TrendingUp, Shield, Crown, User, ChevronLeft } from 'lucide-react';
+import { getUsers, getLeaderboard, getAttendanceLogs, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import SaintIconArt from '../common/SaintIconArt';
 import ClassRosterModal from './ClassRosterModal';
@@ -13,9 +13,7 @@ export default function Analytics() {
     superAdminsCount: 0,
     classAdminsCount: 0,
     assistantAdminsCount: 0,
-    regularServantsCount: 0,
-    totalPointsDistributed: 0,
-    attendanceRate: '0%'
+    regularServantsCount: 0
   });
   const [servantsByClass, setServantsByClass] = useState([]);
   // Kept from the same fetch so clicking into a class (see ClassRosterModal
@@ -26,7 +24,7 @@ export default function Analytics() {
   const [selectedClass, setSelectedClass] = useState(null);
 
   useEffect(() => {
-    Promise.all([getUsers(), getServiceStats(), getAttendanceLogs()]).then(([users, serviceStats, logs]) => {
+    Promise.all([getUsers(), getAttendanceLogs()]).then(([users, logs]) => {
       const allServants = users.filter(u => u.role !== 'student');
       const stuCount = users.filter(u => u.role === 'student').length;
 
@@ -47,9 +45,7 @@ export default function Analytics() {
         superAdminsCount: superCount,
         classAdminsCount: classAdminCount,
         assistantAdminsCount: assistantCount,
-        regularServantsCount: regularServantCount,
-        totalPointsDistributed: serviceStats.totalPointsDistributed,
-        attendanceRate: serviceStats.attendanceRate
+        regularServantsCount: regularServantCount
       });
 
       setServantsByClass(classBreakdown);
@@ -76,7 +72,7 @@ export default function Analytics() {
       </div>
 
       {/* KPI Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         
         {/* Real Servants Count Card */}
         <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm flex items-center justify-between">
@@ -103,34 +99,6 @@ export default function Analytics() {
           </div>
           <div className="w-12 h-12 rounded-2xl bg-sky-50 border border-sky-100 text-sky-600 flex items-center justify-center font-bold shrink-0">
             <Users className="w-6 h-6" />
-          </div>
-        </div>
-
-        {/* Points & Coupons (Zeroed) */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500 block">رصيد النقاط والكوبونات</span>
-            <h3 className="text-2xl font-black text-amber-600 mt-1">{stats.totalPointsDistributed} نقطة</h3>
-            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full mt-2 inline-block border border-amber-100">
-              سجل جديد مصفر 🌟
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center font-bold shrink-0">
-            <Sparkles className="w-6 h-6" />
-          </div>
-        </div>
-
-        {/* Attendance Rate */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500 block">سجل افتقاد الحضور</span>
-            <h3 className="text-2xl font-black text-emerald-600 mt-1">{stats.attendanceRate}</h3>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full mt-2 inline-block border border-emerald-100">
-              جاهز لتسجيل الحضور 📅
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center font-bold shrink-0">
-            <CalendarCheck className="w-6 h-6" />
           </div>
         </div>
 

@@ -12,9 +12,9 @@ const ROLE_LABELS = {
 };
 
 // "حاضر" here means: attended within the last 7 days (same rolling window
-// Analytics' own attendance-rate KPI card already uses via getServiceStats())
-// — matches a weekly Sunday-meeting rhythm without needing a separate
-// "which week is this" concept.
+// getServiceStats() in supabase.js already uses for its own weekly
+// attendance-rate calculation) — matches a weekly Sunday-meeting rhythm
+// without needing a separate "which week is this" concept.
 const PRESENT_WINDOW_DAYS = 7;
 
 export default function ClassRosterModal({ isOpen, onClose, classInfo, users, attendanceLogs }) {

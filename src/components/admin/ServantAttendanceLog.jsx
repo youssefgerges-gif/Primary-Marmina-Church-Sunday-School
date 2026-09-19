@@ -66,9 +66,6 @@ export default function ServantAttendanceLog() {
             <CalendarCheck className="w-3.5 h-3.5" /> سجل غياب وحضور الخدام
           </span>
           <h2 className="text-xl sm:text-2xl font-black">موسم متابعة الحضور {SEASON_START_LABEL} — {SEASON_END_LABEL}</h2>
-          <p className="text-sky-100 text-xs mt-1 max-w-xl">
-            اجتماع مدارس الأحد كل يوم جمعة الساعة 5:30 عصرًا — تم احتساب {totalFridaysSoFar} جمعة لحد دلوقتي من بداية الموسم.
-          </p>
         </div>
         <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-sky-200 shrink-0 shadow-inner">
           <TrendingUp className="w-10 h-10" />
