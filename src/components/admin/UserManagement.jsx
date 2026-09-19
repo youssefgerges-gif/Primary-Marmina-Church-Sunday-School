@@ -124,7 +124,7 @@ export default function UserManagement() {
       const updatedUsers = await getUsers();
       setUsers(updatedUsers);
       if (refreshUsers) refreshUsers();
-      showToast('تم رفع الكشوفات وتحديث الأسماء! 🔄', `تم إعادة تصفير الكشوفات وتحديث أدوار الخدام الـ ${updatedUsers.length}`, 0, 'success');
+      showToast('تم فحص الكشوفات! 🔄', 'تم إضافة أي شخص كان ناقصًا من القائمة الأصلية بس — أي حد موجود أصلاً متلمسش خالص (لا اسمه ولا دوره ولا رقم تليفونه)', 0, 'success');
     } catch (err) {
       showToast('خطأ في التحديث', err.message || 'حدث خطأ أثناء تحميل البيانات', 0, 'error');
     } finally {
@@ -249,7 +249,7 @@ export default function UserManagement() {
           <button
             onClick={handleResetData}
             className="flex-1 sm:flex-none px-3.5 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
-            title="تحديث البيانات واستيراد الكشوفات"
+            title="إضافة أي شخص ناقص من القائمة الأصلية — آمن، مش بيلمس حد موجود أصلاً"
           >
             تحديث الكشوفات 🔄
           </button>

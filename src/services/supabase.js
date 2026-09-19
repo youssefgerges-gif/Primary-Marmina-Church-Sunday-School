@@ -275,9 +275,22 @@ const getMockData = () => {
   return parsed;
 };
 
+// طلب 2026-09-19: Mr. Gerges لاحظ إن أرقام تليفونات الخدام بترجع تتغير لأرقام
+// وهمية (زي 01200000601) من وقت للتاني. السبب مكانش schema.sql (اللي أصلاً
+// اتصلح ومحمي من أول الجلسة دي بـ IF NOT EXISTS) — السبب الحقيقي كان هنا:
+// زرار "تحديث الكشوفات 🔄" في شاشة "إدارة المستخدمين" (`UserManagement.jsx`)
+// كان بينادي على الدالة دي، واللي كانت بتعمل `upsert` (تحديث لو الكود موجود)
+// لكل الـ~96 شخص بأرقامهم الوهمية الأصلية من `INITIAL_MOCK_DATA` فوق، على
+// قاعدة البيانات الحقيقية على Supabase — يعني أي ضغطة على الزرار ده كانت
+// بتمسح أي رقم تليفون حقيقي اتسجل بعد كده وترجعه للرقم الوهمي، لكل الـ96
+// شخص دفعة واحدة، من غير أي تحذير. الحل: `ignoreDuplicates: true` يخلي
+// الحفظ ده "إضافة الناقص بس" (INSERT ... ON CONFLICT DO NOTHING) بدل
+// "تحديث كل حاجة" — فأي شخص موجود أصلاً (زي كل الـ96) يتجاهل تمامًا ومفيش
+// حاجة فيه (لا الاسم ولا الدور ولا رقم التليفون) بتتلمس، والزرار يفضل مفيد
+// بس لو حد من القائمة الأصلية اتمسح بالغلط ومحتاج يترجع.
 export const resetMockData = async () => {
   localStorage.setItem('sunday_school_db', JSON.stringify(INITIAL_MOCK_DATA));
-  
+
   if (isSupabaseConfigured()) {
     try {
       // Format users for Supabase insertion (excluding local auto-ids if needed)
@@ -290,7 +303,7 @@ export const resetMockData = async () => {
         title: u.title || null
       }));
 
-      await supabase.from('users').upsert(usersToInsert, { onConflict: 'qr_code' });
+      await supabase.from('users').upsert(usersToInsert, { onConflict: 'qr_code', ignoreDuplicates: true });
     } catch (err) {
       console.warn("Supabase auto-seed warning:", err);
     }
