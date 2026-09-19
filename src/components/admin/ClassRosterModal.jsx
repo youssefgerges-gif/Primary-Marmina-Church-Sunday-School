@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
-import { UserCheck, UserX, Shield, Users } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { UserCheck, UserX, Shield, Users, Loader2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import SaintIconArt from '../common/SaintIconArt';
+import { recordAttendance } from '../../services/supabase';
+import { usePoints } from '../../context/PointsContext';
 
 const ROLE_LABELS = {
   class_admin: 'أمين فصل',
@@ -16,6 +18,26 @@ const ROLE_LABELS = {
 const PRESENT_WINDOW_DAYS = 7;
 
 export default function ClassRosterModal({ isOpen, onClose, classInfo, users, attendanceLogs }) {
+  const { showToast, triggerRefresh } = usePoints();
+  // طلب 2026-09-19: طريقة تالتة لتسجيل الحضور (غير QR واليدوي في شاشة
+  // الماسح) — أمين الخدمة العامة يدوس على اسم أي حد غايب هنا في كشف الفصل
+  // فيتسجل حضوره فورًا، من غير ما يحتاج يفتح شاشة الماسح أصلاً.
+  const [markingId, setMarkingId] = useState(null);
+
+  const handleMarkPresent = async (person) => {
+    if (markingId) return;
+    setMarkingId(person.id);
+    try {
+      await recordAttendance(person.qr_code);
+      triggerRefresh();
+      showToast('تم تسجيل الحضور ✅', `تم تسجيل حضور ${person.name} بنجاح`, 0, 'success');
+    } catch (err) {
+      showToast('تعذر تسجيل الحضور', err.message || 'حدث خطأ أثناء تسجيل الحضور، حاول مرة أخرى', 0, 'error');
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
   const lastAttendedMap = useMemo(() => {
     const map = new Map();
     (attendanceLogs || []).forEach(log => {
@@ -48,10 +70,19 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
 
   const renderRow = (person) => {
     const present = isPresent(person.id);
+    const marking = markingId === person.id;
     return (
-      <div
+      <button
         key={person.id}
-        className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200/70"
+        type="button"
+        onClick={() => handleMarkPresent(person)}
+        disabled={present || marking}
+        title={present ? undefined : 'اضغط لتسجيل حضوره الآن'}
+        className={`w-full flex items-center justify-between gap-2 p-2.5 rounded-xl border transition-all text-right ${
+          present
+            ? 'bg-slate-50 border-slate-200/70 cursor-default'
+            : 'bg-slate-50 border-slate-200/70 hover:border-sky-400 hover:bg-sky-50/60 active:scale-[0.99] cursor-pointer'
+        }`}
       >
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-sky-600 text-white font-black text-xs flex items-center justify-center shrink-0">
@@ -73,10 +104,16 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
               : 'bg-rose-100 text-rose-800 border-rose-200'
           }`}
         >
-          {present ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
-          {present ? 'حاضر' : 'غايب'}
+          {marking ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : present ? (
+            <UserCheck className="w-3 h-3" />
+          ) : (
+            <UserX className="w-3 h-3" />
+          )}
+          {marking ? 'جاري التسجيل...' : present ? 'حاضر' : 'غايب'}
         </span>
-      </div>
+      </button>
     );
   };
 
@@ -96,6 +133,10 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
             </span>
           </div>
         </div>
+
+        <p className="text-[11px] text-slate-400 font-bold -mt-1">
+          اضغط على اسم أي حد "غايب" عشان تسجّل حضوره فورًا 👇
+        </p>
 
         {/* Servants in this class */}
         <div>

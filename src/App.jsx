@@ -20,23 +20,70 @@ import AddStudentTool from './components/servant/AddStudentTool';
 import Analytics from './components/admin/Analytics';
 import AbsenceTracker from './components/admin/AbsenceTracker';
 import UserManagement from './components/admin/UserManagement';
+import ServantAttendanceLog from './components/admin/ServantAttendanceLog';
 
 // Student Components
 import StudentCard from './components/student/StudentCard';
 import HistoryTimeline from './components/student/HistoryTimeline';
 
+// طلب 2026-09-19: كل تاب متاح لكل دور — بتُستخدم في حاجتين: (أ) للتحقق إن
+// التاب اللي جاي من رابط الصفحة (؟tab=...) صالح فعلاً لدور المستخدم قبل ما
+// نوقف عليه، و(ب) كتفصيل يوضّح إيه اللي المفروض يبقى متاح لكل دور.
+const TABS_BY_ROLE = {
+  super_admin: ['admin-analytics', 'admin-efteqad', 'admin-users', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-attendance-log', 'scanner'],
+  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'admin-efteqad', 'servant-add-student'],
+  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'admin-efteqad', 'servant-add-student'],
+  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points'],
+  student: ['student-card', 'student-history']
+};
+const DEFAULT_TAB_BY_ROLE = {
+  super_admin: 'admin-analytics',
+  student: 'student-card'
+};
+
+// قراءة اسم التاب الحالي من رابط الصفحة (؟tab=...) لو موجود.
+function getTabFromUrl() {
+  try {
+    return new URLSearchParams(window.location.search).get('tab');
+  } catch {
+    return null;
+  }
+}
+
 function MainContent() {
   const { role, currentUser, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState('scanner');
+  // طلب 2026-09-19: الريفريش كان بيرجّع المستخدم دايمًا لتاب افتراضي (مش
+  // اللي كان واقف فيه) لأن activeTab كانت مجرد useState عادي من غير أي ربط
+  // بالرابط. دلوقتي بنقرا التاب من رابط الصفحة أول ما الصفحة تفتح (أو
+  // 'scanner' لو مفيش حاجة فيه لسه)، وده بيتصحح فورًا تحت لما الدور يتعرف.
+  const [activeTab, setActiveTab] = useState(() => getTabFromUrl() || 'scanner');
 
-  // Land on the right default tab once we know who's actually logged in
-  // (role is unknown until the session/profile finishes loading, so this
-  // can't be computed synchronously at mount like it used to be).
+  // Land on the right tab once we know who's actually logged in (role is
+  // unknown until the session/profile finishes loading): استخدم التاب اللي
+  // في رابط الصفحة لو صالح لدور المستخدم ده، وإلا ارجع للتاب الافتراضي بتاعه.
   useEffect(() => {
     if (role) {
-      setActiveTab(role === 'super_admin' ? 'admin-analytics' : role === 'student' ? 'student-card' : 'scanner');
+      const validTabs = TABS_BY_ROLE[role] || [];
+      const urlTab = getTabFromUrl();
+      const fallback = DEFAULT_TAB_BY_ROLE[role] || 'scanner';
+      setActiveTab(urlTab && validTabs.includes(urlTab) ? urlTab : fallback);
     }
   }, [role]);
+
+  // حدّث رابط الصفحة (؟tab=...) كل ما التاب يتغيّر، عشان الريفريش (أو حفظ
+  // الرابط/مشاركته) يرجّع نفس الشاشة بالظبط بدل ما يوقف على شاشة تانية.
+  useEffect(() => {
+    if (!activeTab) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') !== activeTab) {
+        params.set('tab', activeTab);
+        window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+      }
+    } catch {
+      // مجرد تحسين — مش المفروض يوقف أي تنقل لو فشل لأي سبب
+    }
+  }, [activeTab]);
 
   if (loading) {
     return (
@@ -89,6 +136,13 @@ function MainContent() {
                 نفس الأداة اللي أمناء الفصول بيستخدموها، وبتسمح له كمان
                 باختيار أي فصل (مش مقفول على فصل واحد زيهم). */}
             {activeTab === 'servant-add-student' && <AddStudentTool />}
+            {/* طلب 2026-09-19: سجل غياب وحضور الخدام — يوضّح لأمين الخدمة
+                العامة كل خادم (أمين فصل / مساعد / خادم عادي) حضر كام جمعة من
+                أصل جمع الموسم اللي بدأ من الجمعة 25 سبتمبر 2026 لغاية الجمعة
+                18 سبتمبر 2027 (مدارس الأحد بتقابل يوم الجمعة الساعة 5:30
+                عصرًا). الحساب نفسه بيتم في get_servant_attendance_log() في
+                قاعدة البيانات (super_admin فقط). */}
+            {activeTab === 'servant-attendance-log' && <ServantAttendanceLog />}
             {/* أمين الخدمة العامة ما كانش قدامه أي طريقة يسجل بيها حضور خالص
                 (لا كاميرا ولا تسجيل يدوي) — نفس شاشة الماسح اللي أمناء
                 الفصول/المساعدين/الخدام شايفينها، وبما إنه مش مقفول على فصل

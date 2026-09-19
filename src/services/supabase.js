@@ -706,6 +706,62 @@ export async function getAttendanceLogs() {
   return getMockData().attendance_logs;
 }
 
+// سجل غياب وحضور الخدام (super_admin فقط) — بيرجع لكل خادم (أمين فصل / أمين
+// فصل مساعد / خادم عادي، من غير super_admin نفسه لأنه مش "خادم") عدد جُمع
+// موسم المتابعة اللي حضرها من إجمالي الجُمع اللي عدّت لحد دلوقتي.
+//
+// الموسم: مدارس الأحد بتقابل يوم الجمعة الساعة 5:30 عصرًا، وموسم المتابعة ده
+// بيبدأ من جمعة 25 سبتمبر 2026 لغاية جمعة 18 سبتمبر 2027 — نفس التواريخ
+// المحسوبة *سيرفر سايد* جوه get_servant_attendance_log() في schema.sql
+// (SECURITY DEFINER بترفض أي حد مش super_admin)، فمينفعش حد يشوف الداتا دي
+// أو يتلاعب بيها من غير ما يبقى فعلاً أمين خدمة عامة.
+//
+// `viewer` مستخدم بس في وضع التجربة المحلي (بدون Supabase حقيقي) عشان نكرر
+// نفس حساب الموسم client-side، لأنه مفيش سيرفر حقيقي هناك يتأكد بيه.
+export async function getServantAttendanceLog() {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_servant_attendance_log');
+    if (error) throw new Error(error.message || 'تعذر تحميل سجل حضور الخدام');
+    return data || [];
+  }
+
+  const db = getMockData();
+  const SEASON_START = new Date('2026-09-25T00:00:00');
+  const SEASON_END = new Date('2027-09-18T00:00:00');
+  const now = new Date();
+  const effectiveEnd = now < SEASON_END ? now : SEASON_END;
+
+  const fridays = [];
+  if (effectiveEnd >= SEASON_START) {
+    for (let d = new Date(SEASON_START); d <= effectiveEnd; d.setDate(d.getDate() + 7)) {
+      fridays.push(new Date(d).toDateString());
+    }
+  }
+  const fridaySet = new Set(fridays);
+
+  const servants = db.users.filter(u => ['class_admin', 'assistant_admin', 'servant'].includes(u.role));
+
+  return servants.map(s => {
+    const attendedFridaySet = new Set(
+      db.attendance_logs
+        .filter(l => l.user_id === s.id)
+        .map(l => new Date(l.timestamp).toDateString())
+        .filter(dateStr => fridaySet.has(dateStr))
+    );
+    const attended = attendedFridaySet.size;
+    return {
+      id: s.id,
+      name: s.name,
+      role: s.role,
+      class_id: s.class_id,
+      qr_code: s.qr_code,
+      total_fridays: fridays.length,
+      attended_fridays: attended,
+      attendance_percent: fridays.length === 0 ? 0 : Math.round((attended / fridays.length) * 1000) / 10
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+}
+
 // Generates the same style of short login username used for the existing
 // roster (see schema.sql's backfill): "ADM01", "ADM02"... for general
 // service admins, and the QR code with "QR-" and dashes stripped for

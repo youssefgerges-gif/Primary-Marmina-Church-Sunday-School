@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle } from 'lucide-react';
+import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle, Search } from 'lucide-react';
 import { recordAttendance, getManualAttendanceRoster, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -35,6 +35,12 @@ export default function QRScanner({ onScanSuccess }) {
   const [rosterUsers, setRosterUsers] = useState([]);
   const isScoped = currentUser && currentUser.role !== 'super_admin';
   const scopedClassName = isScoped ? CLASSES.find(c => c.id === currentUser.class_id)?.name : null;
+
+  // طلب 2026-09-19: بحث بالاسم جوه تبويب "تسجيل الحضور يدويًا" لكل الأدوار،
+  // وتقسيم القائمة لفصول لأمين الخدمة العامة تحديدًا لأنه الوحيد اللي شايف
+  // كل الفصول مجمّعة في قائمة واحدة طويلة (باقي الأدوار أصلاً مقفولة على
+  // فصلها من get_manual_attendance_roster() في قاعدة البيانات).
+  const [manualSearchQuery, setManualSearchQuery] = useState('');
 
   useEffect(() => {
     getManualAttendanceRoster(currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null)
@@ -150,6 +156,45 @@ export default function QRScanner({ onScanSuccess }) {
     };
   }, [scanMethod, cameraRetryKey]);
 
+  const trimmedManualQuery = manualSearchQuery.trim();
+  const filteredRosterUsers = trimmedManualQuery
+    ? rosterUsers.filter(u => u.name.includes(trimmedManualQuery))
+    : rosterUsers;
+
+  // تقسيم القائمة المفلترة على الفصول الـ 7 — لأمين الخدمة العامة فقط (مش
+  // مقفول على فصل واحد زي باقي الأدوار)، وبنسيب أي فصل من غير حد ظاهر فيه
+  // (بعد البحث) من غير ما نعرض عنوان فاضي له.
+  const groupedByClass = !isScoped
+    ? CLASSES
+        .map(c => ({ classInfo: c, people: filteredRosterUsers.filter(u => u.class_id === c.id) }))
+        .filter(g => g.people.length > 0)
+    : null;
+
+  const renderPersonCard = (user) => (
+    <button
+      key={user.id}
+      onClick={() => handleQRProcess(user.qr_code)}
+      disabled={loading}
+      className="p-3.5 rounded-2xl border border-slate-200 hover:border-sky-500 bg-slate-50 hover:bg-sky-50/50 flex items-center justify-between text-right transition-all group"
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-sky-100 group-hover:bg-sky-600 text-sky-700 group-hover:text-white flex items-center justify-center font-bold text-sm transition-colors">
+          {user.name[0]}
+        </div>
+        <div>
+          <h4 className="font-bold text-slate-800 text-xs">{user.name}</h4>
+          <span className="text-[10px] text-slate-500 block">
+            {ROLE_LABELS[user.role] || user.role} | {user.qr_code}
+          </span>
+        </div>
+      </div>
+
+      <div className="px-2.5 py-1 rounded-lg bg-sky-600 text-white font-bold text-[10px] group-hover:scale-105 transition-transform">
+        تسجيل ⚡️
+      </div>
+    </button>
+  );
+
   return (
     <div className="max-w-xl mx-auto space-y-6 dir-rtl text-right">
       
@@ -233,32 +278,41 @@ export default function QRScanner({ onScanSuccess }) {
           {rosterUsers.length === 0 ? (
             <p className="text-center text-slate-400 text-xs py-8">لا يوجد أشخاص لعرضهم في فصلك حاليًا.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {rosterUsers.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => handleQRProcess(user.qr_code)}
-                  disabled={loading}
-                  className="p-3.5 rounded-2xl border border-slate-200 hover:border-sky-500 bg-slate-50 hover:bg-sky-50/50 flex items-center justify-between text-right transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-sky-100 group-hover:bg-sky-600 text-sky-700 group-hover:text-white flex items-center justify-center font-bold text-sm transition-colors">
-                      {user.name[0]}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-xs">{user.name}</h4>
-                      <span className="text-[10px] text-slate-500 block">
-                        {ROLE_LABELS[user.role] || user.role} | {user.qr_code}
-                      </span>
-                    </div>
-                  </div>
+            <>
+              {/* Search by name */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={manualSearchQuery}
+                  onChange={(e) => setManualSearchQuery(e.target.value)}
+                  placeholder="ابحث بالاسم..."
+                  className="w-full bg-slate-50 text-slate-900 font-semibold text-xs py-2.5 pr-10 pl-3 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
+                />
+              </div>
 
-                  <div className="px-2.5 py-1 rounded-lg bg-sky-600 text-white font-bold text-[10px] group-hover:scale-105 transition-transform">
-                    تسجيل ⚡️
-                  </div>
-                </button>
-              ))}
-            </div>
+              {filteredRosterUsers.length === 0 ? (
+                <p className="text-center text-slate-400 text-xs py-8">لا يوجد نتائج مطابقة لبحثك "{trimmedManualQuery}".</p>
+              ) : groupedByClass ? (
+                <div className="space-y-5">
+                  {groupedByClass.map((g) => (
+                    <div key={g.classInfo.id}>
+                      <h4 className="text-xs font-black text-slate-700 mb-2 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0"></span>
+                        {g.classInfo.name} ({g.people.length})
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {g.people.map(renderPersonCard)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {filteredRosterUsers.map(renderPersonCard)}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

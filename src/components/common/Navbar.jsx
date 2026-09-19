@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Shield, User, UserPlus, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut } from 'lucide-react';
+import { Award, Shield, User, UserPlus, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut, BarChart3 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import { getStudentBalance } from '../../services/supabase';
@@ -94,6 +94,18 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   }`}
                 >
                   <UserPlus className="w-4 h-4 text-emerald-600" /> إضافة مخدوم
+                </button>
+                {/* طلب 2026-09-19: سجل غياب وحضور الخدام — كام جمعة حضرها كل
+                    خادم من موسم المتابعة (25 سبتمبر 2026 - 18 سبتمبر 2027)،
+                    super_admin فقط، محسوبة سيرفر سايد في get_servant_
+                    attendance_log() في schema.sql. */}
+                <button
+                  onClick={() => setActiveTab('servant-attendance-log')}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'servant-attendance-log' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4 text-indigo-500" /> سجل حضور الخدام
                 </button>
                 <button
                   onClick={() => setActiveTab('scanner')}

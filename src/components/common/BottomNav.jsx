@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus } from 'lucide-react';
+import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus, BarChart3 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function BottomNav({ activeTab, setActiveTab }) {
@@ -138,6 +138,16 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             >
               <UserPlus className="w-5 h-5 mb-0.5" />
               <span className="text-[10px] whitespace-nowrap">إضافة مخدوم</span>
+            </button>
+            {/* طلب 2026-09-19: سجل غياب وحضور الخدام — نفس زرار سطح المكتب. */}
+            <button
+              onClick={() => setActiveTab('servant-attendance-log')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'servant-attendance-log' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <BarChart3 className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">سجل حضور الخدام</span>
             </button>
             <button
               onClick={() => setActiveTab('scanner')}

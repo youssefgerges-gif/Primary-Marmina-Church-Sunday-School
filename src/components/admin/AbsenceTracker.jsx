@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarX, Phone, Clock, AlertTriangle, Send, Users, User } from 'lucide-react';
+import { CalendarX, Phone, Clock, AlertTriangle, Send, Users, User, Search } from 'lucide-react';
 import { getAbsenceReport, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +20,10 @@ export default function AbsenceTracker() {
   // single combined list into two views instead of mixing خدام و مخدومين
   // together in one table.
   const [personType, setPersonType] = useState('students'); // 'students' or 'servants'
+
+  // طلب 2026-09-19: بحث بالاسم جوه تاب المخدومين وتاب الخدام بدل ما أمين
+  // الخدمة/الفصل يقعد يدور بعينه في القايمة كلها.
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Class admins / assistant admins / servants only ever get back THEIR
   // OWN class's people (see getAbsenceReport + get_absence_report() in
@@ -71,7 +75,11 @@ export default function AbsenceTracker() {
 
   const studentsCount = absentStudents.filter(s => s.role === 'student').length;
   const servantsCount = absentStudents.filter(s => s.role !== 'student').length;
-  const visibleList = absentStudents.filter(s => (personType === 'students' ? s.role === 'student' : s.role !== 'student'));
+  const baseList = absentStudents.filter(s => (personType === 'students' ? s.role === 'student' : s.role !== 'student'));
+  const trimmedQuery = searchQuery.trim();
+  const visibleList = trimmedQuery
+    ? baseList.filter(s => s.name.includes(trimmedQuery))
+    : baseList;
   const personTypeLabel = personType === 'students' ? 'المخدومين' : 'الخدام';
 
   return (
@@ -126,6 +134,18 @@ export default function AbsenceTracker() {
           </button>
         </div>
 
+        {/* Search by name */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={`ابحث بالاسم في ${personTypeLabel}...`}
+            className="w-full bg-slate-50 text-slate-900 font-semibold text-xs py-2.5 pr-10 pl-3 rounded-xl border border-slate-200 focus:bg-white focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all"
+          />
+        </div>
+
         {/* Filter Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
           <div className="flex items-center gap-2">
@@ -155,7 +175,9 @@ export default function AbsenceTracker() {
           <div className="py-12 text-center text-slate-400 font-bold text-sm">جاري حصر كشوفات الغياب... ⏳</div>
         ) : visibleList.length === 0 ? (
           <div className="py-12 text-center text-slate-400 font-bold text-sm bg-slate-50 border border-slate-100 rounded-2xl p-4">
-            لا يوجد {personTypeLabel} {isScoped ? `في فصل ${scopedClassName || ''}` : ''} مسجلين حالياً.
+            {baseList.length === 0
+              ? `لا يوجد ${personTypeLabel} ${isScoped ? `في فصل ${scopedClassName || ''}` : ''} مسجلين حالياً.`
+              : `لا يوجد ${personTypeLabel} مطابقين لبحثك "${trimmedQuery}".`}
           </div>
         ) : (
           <>

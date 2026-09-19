@@ -642,3 +642,86 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.add_scoped_student(TEXT, TEXT, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.add_scoped_student(TEXT, TEXT, TEXT) TO authenticated;
+
+-- ========================================================
+-- SERVANT ATTENDANCE / ABSENCE SEASON LOG (سجل غياب وحضور الخدام)
+-- Requested 2026-09-19: super_admin wants to see, for every خادم (class_admin
+-- / assistant_admin / servant — NOT super_admin itself, and NOT مخدومين),
+-- how many weekly meetings out of the elapsed total they've attended.
+--
+-- The church's Sunday School actually meets on FRIDAYS at 5:30pm (despite
+-- the "مدارس الأحد" name), and this specific attendance-tracking season runs
+-- Friday 2026-09-25 through Friday 2027-09-18 — one meeting date every 7
+-- days across that fixed range. "Elapsed" fridays are whichever of those
+-- fall on or before today, so the totals only ever count weeks that have
+-- actually happened yet (before the season starts, every count is 0/0).
+--
+-- Attendance is matched by calendar day in Africa/Cairo time (attendance_logs
+-- rows are UTC timestamps) — a QR scan or manual/roster-tap check-in on that
+-- Friday, any time that day, counts as attending it. Reuses the exact same
+-- attendance_logs table every other attendance feature writes to; no new
+-- table needed.
+--
+-- super_admin only, same SECURITY DEFINER + REVOKE/GRANT pattern as every
+-- other scoped function above — enforced server-side, not just hidden in
+-- the app's UI.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.get_servant_attendance_log()
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  role TEXT,
+  class_id TEXT,
+  qr_code TEXT,
+  total_fridays INTEGER,
+  attended_fridays INTEGER,
+  attendance_percent NUMERIC
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_season_start DATE := DATE '2026-09-25';
+  v_season_end DATE := DATE '2027-09-18';
+  v_effective_end DATE := LEAST(DATE '2027-09-18', (now() AT TIME ZONE 'Africa/Cairo')::DATE);
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role <> 'super_admin' THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض سجل حضور الخدام';
+  END IF;
+
+  RETURN QUERY
+  WITH elapsed_fridays AS (
+    SELECT gs::DATE AS friday_date
+    FROM generate_series(v_season_start, v_effective_end, INTERVAL '7 days') AS gs
+    WHERE v_effective_end >= v_season_start
+  ),
+  totals AS (
+    SELECT COUNT(*)::INTEGER AS total FROM elapsed_fridays
+  )
+  SELECT
+    u.id,
+    u.name,
+    u.role,
+    u.class_id,
+    u.qr_code,
+    totals.total AS total_fridays,
+    COUNT(DISTINCT ef.friday_date)::INTEGER AS attended_fridays,
+    CASE WHEN totals.total = 0 THEN 0
+    ELSE ROUND(100.0 * COUNT(DISTINCT ef.friday_date) / totals.total, 1)
+    END AS attendance_percent
+  FROM public.users u
+  CROSS JOIN totals
+  LEFT JOIN elapsed_fridays ef
+    ON EXISTS (
+      SELECT 1 FROM public.attendance_logs al
+      WHERE al.user_id = u.id
+        AND (al.timestamp AT TIME ZONE 'Africa/Cairo')::DATE = ef.friday_date
+    )
+  WHERE u.role IN ('class_admin', 'assistant_admin', 'servant')
+  GROUP BY u.id, u.name, u.role, u.class_id, u.qr_code, totals.total
+  ORDER BY u.name;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_servant_attendance_log() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_servant_attendance_log() TO authenticated;
