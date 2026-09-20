@@ -25,12 +25,16 @@ export default function AbsenceTracker() {
   // الخدمة/الفصل يقعد يدور بعينه في القايمة كلها.
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Class admins / assistant admins / servants only ever get back THEIR
-  // OWN class's people (see getAbsenceReport + get_absence_report() in
-  // schema.sql for where that's actually enforced) — super_admin sees
-  // everyone. currentUser.role/class_id is passed only as a fallback for
-  // local/mock mode; against a real Supabase project the server checks who
-  // is actually logged in itself, so this can't be spoofed from the app.
+  // طلب 2026-09-20: الشاشة دي بقت حصرية لأمين الخدمة العامة بس (كانت متاحة
+  // لأمين الفصل والمساعد كمان لفصلهم بس قبل كده) — لا نافيجيشن ولا تاب في
+  // Navbar.jsx/BottomNav.jsx/App.jsx بيوصّل أي دور تاني ليها، وget_absence_
+  // report() في schema.sql برضو بترفض أي حد مش super_admin، مش مجرد إخفاء
+  // الزرار. isScoped/scopedClassName تحت فضلوا زي ما هم (بيبقوا دايمًا false/
+  // null دلوقتي بما إن الداخل الوحيد بقى super_admin) عشان الكود مش محتاج
+  // إعادة هيكلة، وكل نصوص البانر بتفضل صح (بتوري "كل الفصول" تلقائيًا).
+  // currentUser.role/class_id is passed only as a fallback for local/mock
+  // mode; against a real Supabase project the server checks who is actually
+  // logged in itself, so this can't be spoofed from the app.
   const isScoped = currentUser && currentUser.role !== 'super_admin';
   const scopedClassName = isScoped ? CLASSES.find(c => c.id === currentUser.class_id)?.name : null;
 

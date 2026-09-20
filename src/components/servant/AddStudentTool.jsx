@@ -8,12 +8,12 @@ export default function AddStudentTool() {
   const { currentUser, refreshUsers } = useAuth();
   const { showToast, triggerRefresh } = usePoints();
 
-  // Only class_admin / assistant_admin / super_admin ever reach this screen
-  // (see Navbar.jsx / BottomNav.jsx / App.jsx — a plain servant has no menu
-  // button for it at all). class_admin/assistant_admin always add into
-  // THEIR OWN class — enforced server-side inside add_scoped_student() (see
-  // schema.sql), not just hidden here — so there's no class picker for them.
-  // super_admin isn't tied to one class, so they choose which class.
+  // As of 2026-09-20, servant / class_admin / assistant_admin all reach this
+  // screen equally (see Navbar.jsx / BottomNav.jsx / App.jsx — a plain
+  // servant used to have no menu button for it at all). All three always add
+  // into THEIR OWN class — enforced server-side inside add_scoped_student()
+  // (see schema.sql), not just hidden here — so there's no class picker for
+  // them. super_admin isn't tied to one class, so they choose which class.
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const scopedClassName = !isSuperAdmin ? CLASSES.find(c => c.id === currentUser?.class_id)?.name : null;
 

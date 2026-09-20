@@ -253,9 +253,11 @@ DROP POLICY IF EXISTS "Super admin can delete users" ON public.users;
 DROP POLICY IF EXISTS "Staff can view all attendance" ON public.attendance_logs;
 DROP POLICY IF EXISTS "Students can view own attendance" ON public.attendance_logs;
 DROP POLICY IF EXISTS "Staff can record attendance" ON public.attendance_logs;
+DROP POLICY IF EXISTS "Staff can delete attendance" ON public.attendance_logs;
 DROP POLICY IF EXISTS "Staff can view all points" ON public.points_ledger;
 DROP POLICY IF EXISTS "Students can view own points" ON public.points_ledger;
 DROP POLICY IF EXISTS "Staff can add points" ON public.points_ledger;
+DROP POLICY IF EXISTS "Staff can delete points" ON public.points_ledger;
 
 -- Helpers used inside policies to look up the caller's own role / users.id
 -- from their Supabase Auth id (auth.uid()). SECURITY DEFINER so this
@@ -309,9 +311,35 @@ CREATE POLICY "Students can view own attendance" ON public.attendance_logs
   FOR SELECT TO authenticated
   USING (user_id = public.current_user_id());
 
+-- طلب 2026-09-20: أي حد مش أمين الخدمة العامة (خادم / أمين فصل / أمين
+-- مساعد) بقى يقدر يسجل حضور مخدومين بس — لو حاول يسجل حضور خادم تاني (سواء
+-- من القائمة اليدوية أو بمسح كارت الـQR بتاعه بالكاميرا) الإدراج نفسه
+-- بيترفض هنا من قاعدة البيانات، مش بس مخفي من الواجهة. حضور الخدام بقى
+-- حصريًا في يد أمين الخدمة العامة بس، سواء من هنا أو من شاشة "سجل حضور
+-- الخدام" المخصصة له.
 CREATE POLICY "Staff can record attendance" ON public.attendance_logs
   FOR INSERT TO authenticated
-  WITH CHECK (public.current_user_role() IS NOT NULL AND public.current_user_role() <> 'student');
+  WITH CHECK (
+    public.current_user_role() IS NOT NULL
+    AND public.current_user_role() <> 'student'
+    AND (
+      public.current_user_role() = 'super_admin'
+      OR EXISTS (
+        SELECT 1 FROM public.users u
+        WHERE u.id = attendance_logs.user_id AND u.role = 'student'
+      )
+    )
+  );
+
+-- طلب 2026-09-20: تسجيل الحضور من كشف الفصل بقى فيه تراجع (دوسة حضور،
+-- دوسة تلغي) — الشاشة نفسها (ClassRosterModal.jsx) بتتحكم إمتى تسمح بالتراجع
+-- (بس على آخر سجل الشخص ده لسه نفسه، في نفس الجلسة)، لكن من غير سياسة DELETE
+-- هنا، أي محاولة حذف كانت بترجع "نجحت" من غير ما تمسح أي حاجة فعليًا (الـRLS
+-- كانت بترفض الحذف بصمت، صفر صفوف اتأثرت، مفيش error يترمي) — وده بالظبط اللي
+-- كان بيحصل قبل السطر ده.
+CREATE POLICY "Staff can delete attendance" ON public.attendance_logs
+  FOR DELETE TO authenticated
+  USING (public.current_user_role() IS NOT NULL AND public.current_user_role() <> 'student');
 
 -- ===== points_ledger =====
 CREATE POLICY "Staff can view all points" ON public.points_ledger
@@ -325,6 +353,13 @@ CREATE POLICY "Students can view own points" ON public.points_ledger
 CREATE POLICY "Staff can add points" ON public.points_ledger
   FOR INSERT TO authenticated
   WITH CHECK (public.current_user_role() IS NOT NULL AND public.current_user_role() <> 'student');
+
+-- Same reasoning as "Staff can delete attendance" above — needed so
+-- cancelAttendance() can actually remove the matching points_ledger row
+-- (the +10 points) when undoing a مخدوم's mistaken attendance tap.
+CREATE POLICY "Staff can delete points" ON public.points_ledger
+  FOR DELETE TO authenticated
+  USING (public.current_user_role() IS NOT NULL AND public.current_user_role() <> 'student');
 
 -- ========================================================
 -- LOGIN LOOKUP FUNCTIONS
@@ -422,8 +457,14 @@ DECLARE
   v_class_id TEXT;
 BEGIN
   v_role := public.current_user_role();
-  IF v_role IS NULL OR v_role = 'student' THEN
-    RAISE EXCEPTION 'غير مصرح لك بعرض سجل الافتقاد';
+  -- طلب 2026-09-20: سجل الافتقاد بقى حصري لأمين الخدمة العامة بس — كان قبل
+  -- كده متاح لأمين الفصل والمساعد كمان (لفصلهم بس)، لكن Mr. Gerges طلب صراحة
+  -- إنها تبقى شاشة مركزية عند أمين الخدمة وحده، بعكس باقي الشاشات اللي بقت
+  -- مفتوحة لكل "الخدام" (أمين فصل/مساعد/خادم) بالتساوي. v_class_id تحت بقت
+  -- عمليًا مالهاش لازمة (السطر دايمًا هيبقى super_admin)، سايباها زي ما هي
+  -- كتوثيق للمنطق ومنعًا لأي تعديل زيادة عن اللازم.
+  IF v_role IS DISTINCT FROM 'super_admin' THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض سجل الافتقاد — الشاشة دي لأمين الخدمة العامة فقط';
   END IF;
 
   IF v_role <> 'super_admin' THEN
@@ -513,11 +554,16 @@ GRANT EXECUTE ON FUNCTION public.get_scoped_students() TO authenticated;
 -- CLASS-SCOPED, AND (UNLIKE get_scoped_students() ABOVE) ROLE-DIFFERENTIATED:
 -- Used by QRScanner.jsx's manual/no-camera tab (used to record attendance by
 -- picking a card from a list instead of scanning with the phone's camera).
--- Who sees what is NOT the same for every staff role here:
---   - servant                        -> only مخدومين (students) of their own class
---   - class_admin / assistant_admin  -> both مخدومين AND خدام (students,
---                                        servants, and each other) of their
---                                        own class
+-- طلب 2026-09-20 (نسخة ثانية، نفس اليوم): رجّعنا الخدام (class_admin /
+-- assistant_admin / servant) يشوفوا مخدومين فصلهم بس تاني — تجربة قصيرة
+-- خلال نفس اليوم كانت بتوريهم خدام فصلهم كمان، لكن Mr. Gerges قرر إن أي
+-- حاجة تخص الخدام (بيانات/حضور خدام تانيين) لازم تفضل حصرية لأمين الخدمة
+-- العامة بس — مفيش أي أمين فصل أو مساعد أو خادم عادي يقدر يسجل حضور خادم
+-- تاني من هنا. حضور الخدام بيتسجل بس من خلال أمين الخدمة (هنا أو من شاشة
+-- "سجل حضور الخدام" المخصصة له).
+-- Who sees what:
+--   - servant / class_admin / assistant_admin -> مخدومين (students) بس،
+--                                        من فصلهم هما بس
 --   - super_admin                    -> everyone, every class (kept for
 --                                        consistency with every other scoped
 --                                        function here, even though the app's
@@ -525,6 +571,10 @@ GRANT EXECUTE ON FUNCTION public.get_scoped_students() TO authenticated;
 --                                        a "scanner" tab today)
 -- Enforced here server-side, same pattern as get_absence_report() /
 -- get_scoped_students() above — can't be bypassed by calling the API directly.
+-- The matching camera-scan path is enforced separately, via the
+-- "Staff can record attendance" RLS policy on attendance_logs above (so a
+-- class-level admin can't bypass this by scanning a خادم's physical QR card
+-- instead of picking them from this list).
 -- ========================================================
 CREATE OR REPLACE FUNCTION public.get_manual_attendance_roster()
 RETURNS TABLE (
@@ -551,12 +601,10 @@ BEGIN
   RETURN QUERY
   SELECT u.id, u.name, u.role, u.qr_code, u.class_id
   FROM public.users u
-  WHERE u.role <> 'super_admin'
-    AND (
-      v_role = 'super_admin'
-      OR (v_role = 'servant' AND u.class_id = v_class_id AND u.role = 'student')
-      OR (v_role IN ('class_admin', 'assistant_admin') AND u.class_id = v_class_id)
+  WHERE (
+      v_role = 'super_admin' AND u.role <> 'super_admin'
     )
+    OR (v_role IN ('servant', 'class_admin', 'assistant_admin') AND u.class_id = v_class_id AND u.role = 'student')
   ORDER BY u.name;
 END;
 $$;
@@ -579,12 +627,13 @@ GRANT EXECUTE ON FUNCTION public.get_manual_attendance_roster() TO authenticated
 -- this is a narrow SECURITY DEFINER function, same pattern as
 -- get_absence_report() / get_scoped_students() / get_manual_attendance_
 -- roster() above — the general RLS policy is untouched:
---   - class_admin / assistant_admin -> can only add a STUDENT, and only into
---     THEIR OWN class (their own current_user_class_id() is used
+--   - servant / class_admin / assistant_admin -> can only add a STUDENT, and
+--     only into THEIR OWN class (their own current_user_class_id() is used
 --     regardless of anything the caller sends — can't be spoofed via the
 --     API to add someone into another class, or as a non-student role).
+--     (طلب 2026-09-20: كان أمين الفصل/المساعد بس، دلوقتي الخادم العادي كمان.)
 --   - super_admin -> can add a student into ANY class (must pass p_class_id).
---   - every other role (servant, student, or not logged in) -> rejected.
+--   - every other role (student, or not logged in) -> rejected.
 -- The new person's qr_code/username are generated here, the same style as
 -- the rest of the roster (QR-STU-##### / STU#####), so a freshly-added
 -- student immediately has a working QR card and login code, exactly like
@@ -611,7 +660,7 @@ DECLARE
   v_username TEXT;
 BEGIN
   v_role := public.current_user_role();
-  IF v_role IS NULL OR v_role NOT IN ('class_admin', 'assistant_admin', 'super_admin') THEN
+  IF v_role IS NULL OR v_role NOT IN ('servant', 'class_admin', 'assistant_admin', 'super_admin') THEN
     RAISE EXCEPTION 'غير مصرح لك بإضافة مخدوم جديد';
   END IF;
 
@@ -625,7 +674,7 @@ BEGIN
     END IF;
     v_class_id := p_class_id;
   ELSE
-    -- class_admin / assistant_admin: always their own class, no matter what
+    -- servant / class_admin / assistant_admin: always their own class, no matter what
     -- (if anything) was sent — enforced here, not just hidden in the UI.
     v_class_id := public.current_user_class_id();
   END IF;

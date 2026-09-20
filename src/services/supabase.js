@@ -320,7 +320,16 @@ const saveMockData = (data) => {
 // SUPABASE API FUNCTIONS
 // ==========================================
 
-export async function recordAttendance(qrCodeStr) {
+// طلب 2026-09-20 (نسخة ثانية، نفس اليوم): حضور الخدام (class_admin /
+// assistant_admin / servant) بقى حصريًا في يد أمين الخدمة العامة بس —
+// سواء اتسجل باختيار الاسم من القائمة اليدوية أو بمسح كارت الـQR بتاعه
+// بالكاميرا. `viewer` هنا بيسمح بفحص سريع وبرسالة واضحة قبل حتى ما نحاول
+// الإدراج (وده اللي بيحمي وضع mock/local بردو، اللي مفيهوش قاعدة بيانات
+// حقيقية تطبق سياسة RLS) — الحماية الحقيقية اللي معاها مفيش طريقة تتلف
+// عليها هي سياسة "Staff can record attendance" في schema.sql، اللي بترفض
+// الإدراج فعليًا على مستوى قاعدة البيانات إلا لو الشخص المسجَّل حضوره
+// مخدوم، أو الشخص المسجِّل نفسه أمين الخدمة العامة.
+export async function recordAttendance(qrCodeStr, viewer = null) {
   if (isSupabaseConfigured()) {
     const { data: user, error: userError } = await supabase
       .from('users')
@@ -336,6 +345,10 @@ export async function recordAttendance(qrCodeStr) {
       throw new Error('تعذر الاتصال بقاعدة البيانات، حاول مرة أخرى');
     }
     if (userError || !user) throw new Error('رمز QR غير مسجل في النظام');
+
+    if (user.role !== 'student' && viewer && viewer.role !== 'super_admin') {
+      throw new Error('غير مصرح لك بتسجيل حضور خادم — تسجيل حضور الخدام لأمين الخدمة العامة فقط');
+    }
 
     // Both inserts below share this exact timestamp (rather than each calling
     // `new Date().toISOString()` separately) so the attendance record and its
@@ -380,6 +393,10 @@ export async function recordAttendance(qrCodeStr) {
 
     if (!user) {
       throw new Error('رمز QR غير مسجل في النظام');
+    }
+
+    if (user.role !== 'student' && viewer && viewer.role !== 'super_admin') {
+      throw new Error('غير مصرح لك بتسجيل حضور خادم — تسجيل حضور الخدام لأمين الخدمة العامة فقط');
     }
 
     const timestamp = new Date().toISOString();
@@ -547,6 +564,11 @@ export async function getStudentBalance(studentId) {
 // function (see schema.sql) based on who's actually logged in — so it
 // can't be bypassed by calling the API directly, regardless of what the
 // app's UI does or doesn't show.
+// طلب 2026-09-20: سجل الافتقاد بقى حصري لأمين الخدمة العامة بس — كان متاحًا
+// لأمين الفصل والمساعد كمان (لفصلهم بس) قبل كده. الإنفورسمنت الحقيقي في
+// get_absence_report() في schema.sql (بترفض أي حد مش super_admin)؛ هنا في
+// mock mode بنكرر نفس الرفض عشان لو حد جرب يفتح الشاشة محليًا من غير
+// Supabase يشوف نفس السلوك بالظبط.
 export async function getAbsenceReport(minWeeksAbsent = 2, viewer = null) {
   if (isSupabaseConfigured()) {
     const { data, error } = await supabase.rpc('get_absence_report', { min_weeks: minWeeksAbsent });
@@ -557,11 +579,12 @@ export async function getAbsenceReport(minWeeksAbsent = 2, viewer = null) {
     }));
   }
 
-  const db = getMockData();
-  let users = db.users.filter(u => u.role !== 'super_admin');
-  if (viewer && viewer.role !== 'super_admin' && viewer.class_id) {
-    users = users.filter(u => u.class_id === viewer.class_id);
+  if (viewer && viewer.role !== 'super_admin') {
+    throw new Error('غير مصرح لك بعرض سجل الافتقاد — الشاشة دي لأمين الخدمة العامة فقط');
   }
+
+  const db = getMockData();
+  const users = db.users.filter(u => u.role !== 'super_admin');
 
   const logs = db.attendance_logs;
   const now = new Date();
@@ -617,10 +640,11 @@ export async function getScopedStudents(viewer = null) {
 
 // Class-scoped roster for QRScanner.jsx's manual/no-camera picker tab
 // ("تسجيل الحضور يدويًا") — used to record attendance by picking a card
-// instead of scanning with the camera. Unlike getScopedStudents() above,
-// what's visible here is NOT the same for every staff role:
-//   - servant                       -> only مخدومين (students) of their own class
-//   - class_admin / assistant_admin -> مخدومين AND خدام of their own class
+// instead of scanning with the camera.
+//   - servant / class_admin / assistant_admin -> مخدومين AND خدام of their
+//                                       own class, all equally (as of
+//                                       2026-09-20 — a plain servant used to
+//                                       see مخدومين only)
 //   - super_admin                   -> everyone (not currently reachable from
 //                                       the app's UI, which never gives
 //                                       super_admin a "scanner" tab — kept
@@ -632,6 +656,10 @@ export async function getScopedStudents(viewer = null) {
 // Against a real Supabase project the scoping is enforced *server-side*
 // inside get_manual_attendance_roster() (see schema.sql) based on who's
 // actually logged in, so it can't be bypassed by calling the API directly.
+//
+// طلب 2026-09-20 (نسخة ثانية، نفس اليوم): servant / class_admin /
+// assistant_admin كلهم بيشوفوا مخدومين فصلهم بس تاني — أي حاجة تخص خدام
+// تانيين (بياناتهم أو تسجيل حضورهم) بقت حصرية لأمين الخدمة العامة بس.
 export async function getManualAttendanceRoster(viewer = null) {
   if (isSupabaseConfigured()) {
     const { data, error } = await supabase.rpc('get_manual_attendance_roster');
@@ -641,24 +669,22 @@ export async function getManualAttendanceRoster(viewer = null) {
 
   const db = getMockData();
   let roster = db.users.filter(u => u.role !== 'super_admin');
-  if (viewer && viewer.role !== 'super_admin' && viewer.class_id) {
-    roster = roster.filter(u => u.class_id === viewer.class_id);
-    if (viewer.role === 'servant') {
-      roster = roster.filter(u => u.role === 'student');
-    }
+  if (viewer && viewer.role !== 'super_admin') {
+    roster = roster.filter(u => u.role === 'student' && u.class_id === viewer.class_id);
   }
   return roster.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 }
 
-// Add a new student (إضافة مخدوم جديد) — class_admin / assistant_admin /
-// super_admin only (a plain servant has no access to this at all, per the
-// request). class_admin/assistant_admin always add into THEIR OWN class;
-// super_admin must specify which class. Against a real Supabase project this
-// is enforced *server-side* inside add_scoped_student() (see schema.sql) —
-// it generates the new person's qr_code/username itself and can't be
-// bypassed by calling the API directly (e.g. to add a non-student, or into
-// another class). `viewer` is only used in local/mock mode to replicate
-// that scoping client-side, since there's no real server-side login there.
+// Add a new student (إضافة مخدوم جديد) — servant / class_admin /
+// assistant_admin / super_admin (as of 2026-09-20; a plain servant used to
+// have no access to this at all). servant/class_admin/assistant_admin always
+// add into THEIR OWN class; super_admin must specify which class. Against a
+// real Supabase project this is enforced *server-side* inside
+// add_scoped_student() (see schema.sql) — it generates the new person's
+// qr_code/username itself and can't be bypassed by calling the API directly
+// (e.g. to add a non-student, or into another class). `viewer` is only used
+// in local/mock mode to replicate that scoping client-side, since there's no
+// real server-side login there.
 export async function addScopedStudent({ name, phone, class_id } = {}, viewer = null) {
   const cleanName = (name || '').trim();
   if (!cleanName) {

@@ -4,6 +4,7 @@ import Modal from '../common/Modal';
 import SaintIconArt from '../common/SaintIconArt';
 import { recordAttendance, cancelAttendance } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
+import { useAuth } from '../../context/AuthContext';
 
 const ROLE_LABELS = {
   class_admin: 'أمين فصل',
@@ -19,6 +20,11 @@ const PRESENT_WINDOW_DAYS = 7;
 
 export default function ClassRosterModal({ isOpen, onClose, classInfo, users, attendanceLogs }) {
   const { showToast, triggerRefresh } = usePoints();
+  // هذه الشاشة نفسها مقفولة أصلاً على super_admin (بتتفتح بس من داخل درِل-داون
+  // فصل في الإحصائيات العامة) — بنمرر currentUser هنا زيادة، دفاع في العمق،
+  // عشان recordAttendance() تقدر تتأكد إن اللي بيسجل حضور خادم فعلاً هو
+  // super_admin (نفس شرط "Staff can record attendance" في schema.sql).
+  const { currentUser } = useAuth();
   // طلب 2026-09-19: طريقة تالتة لتسجيل الحضور (غير QR واليدوي في شاشة
   // الماسح) — أمين الخدمة العامة يدوس على اسم أي حد غايب هنا في كشف الفصل
   // فيتسجل حضوره فورًا، من غير ما يحتاج يفتح شاشة الماسح أصلاً.
@@ -48,7 +54,10 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
         triggerRefresh();
         showToast('تم التراجع ⏪', `اتلغى حضور ${person.name}`, 0, 'success');
       } else {
-        const result = await recordAttendance(person.qr_code);
+        const result = await recordAttendance(
+          person.qr_code,
+          currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null
+        );
         setMyAttendance(prev => ({
           ...prev,
           [person.id]: {

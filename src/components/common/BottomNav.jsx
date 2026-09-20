@@ -46,35 +46,21 @@ export default function BottomNav({ activeTab, setActiveTab }) {
               <QrCode className="w-6 h-6" />
             </button>
 
-            {/* افتقاد الفصل: أمين الفصل وأمين الفصل المساعد فقط، على غرار
-                نفس الزرار في القائمة العلوية لسطح المكتب — الداتا نفسها
-                متقفلة على فصلهم بس من قاعدة البيانات بعيدًا عن الواجهة. */}
-            {(role === 'class_admin' || role === 'assistant_admin') && (
-              <button
-                onClick={() => setActiveTab('admin-efteqad')}
-                className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
-                  activeTab === 'admin-efteqad' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
-                }`}
-              >
-                <CalendarCheck className="w-5 h-5 mb-0.5" />
-                <span className="text-[10px] whitespace-nowrap">افتقاد الفصل</span>
-              </button>
-            )}
-
-            {/* إضافة مخدوم: أمين الفصل وأمين الفصل المساعد فقط، على غرار
-                افتقاد الفصل فوق — الداتا نفسها متقفلة على فصلهم بس من
-                add_scoped_student() في قاعدة البيانات. */}
-            {(role === 'class_admin' || role === 'assistant_admin') && (
-              <button
-                onClick={() => setActiveTab('servant-add-student')}
-                className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
-                  activeTab === 'servant-add-student' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
-                }`}
-              >
-                <UserPlus className="w-5 h-5 mb-0.5" />
-                <span className="text-[10px] whitespace-nowrap">إضافة مخدوم</span>
-              </button>
-            )}
+            {/* طلب 2026-09-20: إضافة مخدوم بقت متاحة لكل "الخدام" بالتساوي
+                (أمين فصل/مساعد/خادم عادي)، مش بس أمين الفصل والمساعد زي
+                الأول — الداتا نفسها متقفلة على فصل كل واحد فيهم بس من
+                add_scoped_student() في قاعدة البيانات. (افتقاد الفصل اتشالت
+                من هنا خالص، وبقت حصرية لأمين الخدمة العامة بس — شوف قايمته
+                هو تحت.) */}
+            <button
+              onClick={() => setActiveTab('servant-add-student')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'servant-add-student' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <UserPlus className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">إضافة مخدوم</span>
+            </button>
           </>
         )}
 

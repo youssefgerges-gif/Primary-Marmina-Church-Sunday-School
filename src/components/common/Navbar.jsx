@@ -145,34 +145,20 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <Award className="w-4 h-4 text-indigo-500" /> إضافة نقاط يدوي
                 </button>
-                {/* افتقاد الفصل: أمين الفصل وأمين الفصل المساعد فقط (مش الخادم
-                    العادي) — وحتى لو حد وصلّها بطريقة تانية، الداتا نفسها
-                    متقفلة على فصله بس من get_absence_report() في قاعدة
-                    البيانات، مش مجرد إخفاء الزرار. */}
-                {(role === 'class_admin' || role === 'assistant_admin') && (
-                  <button
-                    onClick={() => setActiveTab('admin-efteqad')}
-                    className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-                      activeTab === 'admin-efteqad' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                    }`}
-                  >
-                    <CalendarCheck className="w-4 h-4 text-rose-500" /> افتقاد الفصل
-                  </button>
-                )}
-                {/* إضافة مخدوم: أمين الفصل وأمين الفصل المساعد فقط (مش
-                    الخادم العادي)، على غرار افتقاد الفصل فوق — والداتا نفسها
-                    متقفلة على فصلهم بس من add_scoped_student() في قاعدة
-                    البيانات، مش مجرد إخفاء الزرار. */}
-                {(role === 'class_admin' || role === 'assistant_admin') && (
-                  <button
-                    onClick={() => setActiveTab('servant-add-student')}
-                    className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-                      activeTab === 'servant-add-student' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                    }`}
-                  >
-                    <UserPlus className="w-4 h-4 text-emerald-600" /> إضافة مخدوم
-                  </button>
-                )}
+                {/* طلب 2026-09-20: إضافة مخدوم بقت متاحة لكل "الخدام" (أمين
+                    فصل/مساعد/خادم عادي) بالتساوي، مش بس أمين الفصل والمساعد
+                    زي الأول — والداتا نفسها متقفلة على فصل كل واحد فيهم بس من
+                    add_scoped_student() في قاعدة البيانات، مش مجرد إخفاء
+                    الزرار. (افتقاد الفصل، في المقابل، اتشالت من هنا خالص
+                    وبقت حصرية لأمين الخدمة العامة بس — شوف قايمته هو فوق.) */}
+                <button
+                  onClick={() => setActiveTab('servant-add-student')}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'servant-add-student' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <UserPlus className="w-4 h-4 text-emerald-600" /> إضافة مخدوم
+                </button>
               </>
             )}
 

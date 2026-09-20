@@ -29,11 +29,14 @@ import HistoryTimeline from './components/student/HistoryTimeline';
 // طلب 2026-09-19: كل تاب متاح لكل دور — بتُستخدم في حاجتين: (أ) للتحقق إن
 // التاب اللي جاي من رابط الصفحة (؟tab=...) صالح فعلاً لدور المستخدم قبل ما
 // نوقف عليه، و(ب) كتفصيل يوضّح إيه اللي المفروض يبقى متاح لكل دور.
+// طلب 2026-09-20: "الخدام" التلاتة (أمين فصل / أمين فصل مساعد / خادم عادي)
+// بقى عندهم نفس التابات بالظبط — إضافة مخدوم اتضافت للخادم العادي، وافتقاد
+// الفصل اتشالت من الكل خالص وبقت حصرية لأمين الخدمة العامة بس (super_admin).
 const TABS_BY_ROLE = {
   super_admin: ['admin-analytics', 'admin-efteqad', 'admin-users', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-attendance-log', 'scanner'],
-  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'admin-efteqad', 'servant-add-student'],
-  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'admin-efteqad', 'servant-add-student'],
-  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points'],
+  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student'],
+  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student'],
+  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student'],
   student: ['student-card', 'student-history']
 };
 const DEFAULT_TAB_BY_ROLE = {
@@ -167,12 +170,12 @@ function MainContent() {
             {activeTab === 'scanner' && <QRScanner />}
             {activeTab === 'servant-leaderboard' && <ClassLeaderboard />}
             {activeTab === 'servant-manual-points' && <ManualPointsTool />}
-            {activeTab === 'admin-efteqad' && <AbsenceTracker />}
-            {/* إضافة مخدوم جديد: أمين الفصل وأمين الفصل المساعد فقط (مش
-                الخادم العادي) — على غرار نفس تقييد افتقاد الفصل فوق. حتى لو
-                حد وصلّها بطريقة تانية، add_scoped_student() في قاعدة
-                البيانات برضو بترفض أي حد مش class_admin/assistant_admin/
-                super_admin، مش مجرد إخفاء الزرار. */}
+            {/* طلب 2026-09-20: إضافة مخدوم بقت متاحة للتلاتة أدوار دول
+                بالتساوي (كانت أمين الفصل والمساعد بس قبل كده) — add_scoped_
+                student() في قاعدة البيانات بقت بتقبل 'servant' كمان، وبتقفل
+                دايمًا على فصل صاحب الحساب نفسه، مش مجرد إخفاء/إظهار الزرار.
+                افتقاد الفصل (AbsenceTracker) اتشالت من هنا خالص — بقت حصرية
+                لأمين الخدمة العامة بس، فوق في قسم super_admin. */}
             {activeTab === 'servant-add-student' && <AddStudentTool />}
           </>
         )}

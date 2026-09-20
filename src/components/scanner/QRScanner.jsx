@@ -5,9 +5,9 @@ import { recordAttendance, getManualAttendanceRoster, CLASSES } from '../../serv
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
 
-// Matches Navbar.jsx's role labels — a خادم عادي only ever sees مخدومين هنا،
-// لكن أمين الفصل/المساعد بيشوفوا خدام تانيين كمان، فمحتاجين نعرض دور كل حد
-// صح (كانت قبل كده بتتعرض كلها "أمين خدمة" حتى لو الشخص أمين فصل عادي).
+// Matches Navbar.jsx's role labels — بتتعرض جنب كل اسم في القائمة اليدوية.
+// أمين الخدمة العامة لسه بيشوف مخدومين وخدام مع بعض (فمحتاج كل التسميات)؛
+// باقي الأدوار دلوقتي (2026-09-20) بتشوف مخدومين بس من فصلها.
 const ROLE_LABELS = {
   class_admin: 'أمين فصل',
   assistant_admin: 'أمين فصل مساعد',
@@ -25,11 +25,13 @@ export default function QRScanner({ onScanSuccess }) {
   const [cameraRetryKey, setCameraRetryKey] = useState(0);
   const scannerRef = useRef(null);
 
-  // Class-scoped, role-differentiated roster for the manual picker tab —
-  // servant only ever sees مخدومين of their own class; class_admin /
-  // assistant_admin see مخدومين AND خدام of their own class (see
+  // Class-scoped roster for the manual picker tab — servant, class_admin and
+  // assistant_admin all see مخدومين (students) of their own class only; any
+  // data/attendance about خدام is exclusive to super_admin (Mr. Gerges'
+  // explicit 2026-09-20 decision — a same-day experiment briefly let them
+  // see each other's class too, then this was reverted the same day). See
   // get_manual_attendance_roster() in schema.sql for where this is actually
-  // enforced server-side). currentUser.role/class_id here is only a fallback
+  // enforced server-side. currentUser.role/class_id here is only a fallback
   // for local/mock mode; against a real Supabase project the server checks
   // who's actually logged in itself, so this can't be spoofed from the app.
   const [rosterUsers, setRosterUsers] = useState([]);
@@ -53,7 +55,10 @@ export default function QRScanner({ onScanSuccess }) {
     if (loading) return;
     setLoading(true);
     try {
-      const result = await recordAttendance(qrString);
+      const result = await recordAttendance(
+        qrString,
+        currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null
+      );
       setLastScannedUser(result.user);
       triggerRefresh();
 
