@@ -463,34 +463,26 @@ export async function cancelAttendance({ attendanceLogId, pointsLedgerId } = {})
   }
 }
 
-export async function getLeaderboard(classId = 'grade-5') {
+// طلب 2026-09-20: لوحة الصدارة بقى فيها فرض حقيقي على الفصل من قاعدة
+// البيانات، مش بس فلتر واجهة — الفلتر القديم كان بيسمح لأي خادم إنه يشوف
+// نقاط فصل تاني غير فصله بمجرد ما يغيّر الاختيار من القائمة، لأن سياسات
+// RLS ("Staff can view all users"/"Staff can view all points") بتسمح لأي
+// عضو طاقم بقراءة أي فصل، ومفيش حاجة كانت بتفرض إن الفصل المطلوب هو فصله
+// هو بالظبط. get_class_points_leaderboard() في schema.sql بتتجاهل أي
+// classId متبعت لو الطالب مش super_admin، وتفرض current_user_class_id()
+// بدالها — فمينفعش تتلف عليها حتى باستدعاء الـAPI مباشرة.
+// `viewer` هنا بيستخدم في mock/local mode بس لتقليد نفس الفرض، زي باقي
+// الدوال المشابهة في الملف ده.
+export async function getClassLeaderboard(classId = 'grade-5', viewer = null) {
   if (isSupabaseConfigured()) {
-    // Note: previously any Supabase error (or simply zero students in this
-    // class yet) silently fell back to local mock data. Now a real error is
-    // thrown, and zero students in a class legitimately returns an empty
-    // leaderboard instead of substituting unrelated local data.
-    const { data: students, error: stuError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('role', 'student')
-      .eq('class_id', classId);
-
-    if (stuError) throw stuError;
-
-    const { data: ledger, error: ledgerError } = await supabase.from('points_ledger').select('*');
-    if (ledgerError) throw ledgerError;
-    const ledgerItems = ledger || [];
-
-    return (students || []).map(student => {
-      const totalPoints = ledgerItems
-        .filter(entry => entry.student_id === student.id)
-        .reduce((sum, entry) => sum + Number(entry.amount), 0);
-      return { ...student, total_points: totalPoints };
-    }).sort((a, b) => b.total_points - a.total_points);
+    const { data, error } = await supabase.rpc('get_class_points_leaderboard', { p_class_id: classId });
+    if (error) throw new Error(error.message || 'تعذر تحميل لوحة الصدارة');
+    return (data || []).map(row => ({ ...row, total_points: Number(row.total_points) || 0 }));
   }
 
   const db = getMockData();
-  const classStudents = db.users.filter(u => u.role === 'student' && (classId ? u.class_id === classId : true));
+  const effectiveClassId = (viewer && viewer.role !== 'super_admin') ? viewer.class_id : classId;
+  const classStudents = db.users.filter(u => u.role === 'student' && u.class_id === effectiveClassId);
 
   return classStudents.map(student => {
     const totalPoints = db.points_ledger
@@ -498,6 +490,55 @@ export async function getLeaderboard(classId = 'grade-5') {
       .reduce((sum, entry) => sum + Number(entry.amount), 0);
     return { ...student, total_points: totalPoints };
   }).sort((a, b) => b.total_points - a.total_points);
+}
+
+// طلب 2026-09-20: تاب "الحضور" جوه لوحة الصدارة — بيرتب مخدومين الفصل
+// بنسبة حضورهم من تاريخ انضمامهم (مش عدد مرات خام)، عشان مخدوم منضم حديثًا
+// ما يتظلمش بإنه "أقل حضورًا" من واحد قاعد في الخدمة من سنين. الواجهة
+// بتستخدم نفس القايمة دي مرتين: زي ما هي لـ"الأكثر حضورًا"، ومقلوبة
+// لـ"الأقل حضورًا". نفس فرض الفصل اللي في getClassLeaderboard() فوق —
+// enforced server-side جوه get_class_attendance_ranking() في schema.sql.
+export async function getClassAttendanceRanking(classId = 'grade-5', viewer = null) {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_class_attendance_ranking', { p_class_id: classId });
+    if (error) throw new Error(error.message || 'تعذر تحميل ترتيب الحضور');
+    return (data || []).map(row => ({
+      ...row,
+      elapsed_weeks: Number(row.elapsed_weeks) || 0,
+      attended_weeks: Number(row.attended_weeks) || 0,
+      attendance_percent: row.attendance_percent === null ? null : Number(row.attendance_percent)
+    }));
+  }
+
+  const db = getMockData();
+  const effectiveClassId = (viewer && viewer.role !== 'super_admin') ? viewer.class_id : classId;
+  const classStudents = db.users.filter(u => u.role === 'student' && u.class_id === effectiveClassId);
+  const now = Date.now();
+
+  return classStudents
+    .map(student => {
+      // Mock data's hardcoded users don't carry a real created_at, so a
+      // missing one falls back to 8 weeks ago rather than "now" — otherwise
+      // elapsed_weeks would always be 0 and nobody would ever show up here
+      // in local/mock mode.
+      const createdAt = student.created_at ? new Date(student.created_at).getTime() : (now - 8 * 604800000);
+      const elapsedWeeks = Math.max(0, Math.floor((now - createdAt) / 604800000));
+      const attendedWeeksSet = new Set(
+        db.attendance_logs
+          .filter(a => a.user_id === student.id && new Date(a.timestamp).getTime() >= createdAt)
+          .map(a => Math.floor((new Date(a.timestamp).getTime() - createdAt) / 604800000))
+      );
+      return {
+        id: student.id,
+        name: student.name,
+        qr_code: student.qr_code,
+        elapsed_weeks: elapsedWeeks,
+        attended_weeks: attendedWeeksSet.size,
+        attendance_percent: elapsedWeeks > 0 ? Math.round((attendedWeeksSet.size / elapsedWeeks) * 1000) / 10 : null
+      };
+    })
+    .filter(row => row.elapsed_weeks > 0)
+    .sort((a, b) => b.attendance_percent - a.attendance_percent);
 }
 
 export async function addManualPoints(studentId, amount, reason, servantId) {

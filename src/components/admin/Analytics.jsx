@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, UserCheck, Award, TrendingUp, Shield, Crown, User, ChevronLeft } from 'lucide-react';
-import { getUsers, getLeaderboard, getAttendanceLogs, CLASSES } from '../../services/supabase';
+import { getUsers, getAttendanceLogs, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import SaintIconArt from '../common/SaintIconArt';
 import ClassRosterModal from './ClassRosterModal';

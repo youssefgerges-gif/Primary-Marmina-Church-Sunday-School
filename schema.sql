@@ -693,6 +693,134 @@ REVOKE EXECUTE ON FUNCTION public.add_scoped_student(TEXT, TEXT, TEXT) FROM PUBL
 GRANT EXECUTE ON FUNCTION public.add_scoped_student(TEXT, TEXT, TEXT) TO authenticated;
 
 -- ========================================================
+-- CLASS LEADERBOARD — POINTS TAB (لوحة الصدارة، تاب النقاط)
+-- طلب 2026-09-20: لوحة الصدارة (ClassLeaderboard.jsx) كانت فيها فلتر بيسمح
+-- لأي خادم/أمين فصل/مساعد إنه يشوف نقاط أي فصل تاني (مش بس فصله) — الفلتر
+-- ده كان اختيار واجهة بس، مفيش سياسة RLS ولا دالة SECURITY DEFINER كانت
+-- بتمنع طلب مباشر لأي class_id. Mr. Gerges طلب كل خادم يشوف مخدومين فصله
+-- بس، فبقى الإنفاذ هنا حقيقي على مستوى قاعدة البيانات، مش بس إخفاء الفلتر:
+--   - servant / class_admin / assistant_admin -> بيتجاهل أي p_class_id
+--                                        متبعت، ويفرض فصله هو بس دايمًا.
+--   - super_admin                    -> لازم يبعت p_class_id (مش مربوط
+--                                        بفصل واحد، فيختار من فلتر لسه
+--                                        موجود له بس في الواجهة).
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.get_class_points_leaderboard(p_class_id TEXT DEFAULT NULL)
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  qr_code TEXT,
+  total_points NUMERIC
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role = 'student' THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض لوحة الصدارة';
+  END IF;
+
+  IF v_role = 'super_admin' THEN
+    v_class_id := p_class_id;
+    IF v_class_id IS NULL OR TRIM(v_class_id) = '' THEN
+      RAISE EXCEPTION 'يجب اختيار الفصل الدراسي';
+    END IF;
+  ELSE
+    v_class_id := public.current_user_class_id();
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    u.id, u.name, u.qr_code,
+    COALESCE(SUM(pl.amount), 0) AS total_points
+  FROM public.users u
+  LEFT JOIN public.points_ledger pl ON pl.student_id = u.id
+  WHERE u.role = 'student' AND u.class_id = v_class_id
+  GROUP BY u.id, u.name, u.qr_code
+  ORDER BY total_points DESC, u.name;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_class_points_leaderboard(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_class_points_leaderboard(TEXT) TO authenticated;
+
+-- ========================================================
+-- CLASS LEADERBOARD — ATTENDANCE TAB (لوحة الصدارة، تاب الحضور)
+-- طلب 2026-09-20: تاب تاني في نفس لوحة الصدارة، بيرتب مخدومين الفصل حسب
+-- "نسبة حضورهم من تاريخ انضمامهم" — مش عدد مرات حضور خام، عشان محدش ينضم
+-- الأسبوع ده ويبان "أقل حضورًا" من واحد داخل من سنة بالغلط (نفس فلسفة
+-- get_absence_report() فوق: بنحسب من created_at بتاع كل شخص، مش من أول
+-- يوم في النظام). الواجهة بتستخدم نفس الترتيب مرتين: "الأكثر حضورًا" (زي ما
+-- هو) و"الأقل حضورًا" (نفس القايمة مقلوبة) — عشان تعرف مين تفتقده.
+--
+-- الحساب: بناخد الأسابيع (فترات 7 أيام) اللي عدّت من created_at بتاع
+-- المخدوم لحد دلوقتي (elapsed_weeks)، وبنعد كام أسبوع مختلف من الأسابيع دي
+-- فيه حضور واحد على الأقل (attended_weeks)، والنسبة = attended/elapsed.
+-- مخدوم لسه منضم من أقل من أسبوع (elapsed_weeks = 0) مش هيظهر في القايمة
+-- خالص (النسبة مش هتبقى لها معنى) لحد ما يعدي عليه أسبوع كامل.
+--
+-- نفس منطق الفلترة على الفصل اللي في get_class_points_leaderboard() فوق:
+-- أي خادم/أمين فصل/مساعد بيشوف فصله بس، أمين الخدمة بيختار الفصل.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.get_class_attendance_ranking(p_class_id TEXT DEFAULT NULL)
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  qr_code TEXT,
+  elapsed_weeks INTEGER,
+  attended_weeks INTEGER,
+  attendance_percent NUMERIC
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role = 'student' THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض ترتيب الحضور';
+  END IF;
+
+  IF v_role = 'super_admin' THEN
+    v_class_id := p_class_id;
+    IF v_class_id IS NULL OR TRIM(v_class_id) = '' THEN
+      RAISE EXCEPTION 'يجب اختيار الفصل الدراسي';
+    END IF;
+  ELSE
+    v_class_id := public.current_user_class_id();
+  END IF;
+
+  RETURN QUERY
+  WITH scoped AS (
+    SELECT u.id, u.name, u.qr_code, u.created_at
+    FROM public.users u
+    WHERE u.role = 'student' AND u.class_id = v_class_id
+  ),
+  computed AS (
+    SELECT
+      scoped.id, scoped.name, scoped.qr_code,
+      GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - scoped.created_at)) / 604800))::INTEGER AS elapsed_weeks_calc,
+      (SELECT COUNT(DISTINCT FLOOR(EXTRACT(EPOCH FROM (al.timestamp - scoped.created_at)) / 604800))
+       FROM public.attendance_logs al
+       WHERE al.user_id = scoped.id AND al.timestamp >= scoped.created_at)::INTEGER AS attended_weeks_calc
+    FROM scoped
+  )
+  SELECT
+    computed.id, computed.name, computed.qr_code,
+    computed.elapsed_weeks_calc, computed.attended_weeks_calc,
+    ROUND(100.0 * computed.attended_weeks_calc / computed.elapsed_weeks_calc, 1) AS attendance_percent
+  FROM computed
+  WHERE computed.elapsed_weeks_calc > 0
+  ORDER BY attendance_percent DESC, computed.name;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_class_attendance_ranking(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_class_attendance_ranking(TEXT) TO authenticated;
+
+-- ========================================================
 -- SERVANT ATTENDANCE / ABSENCE SEASON LOG (سجل غياب وحضور الخدام)
 -- Requested 2026-09-19: super_admin wants to see, for every خادم (class_admin
 -- / assistant_admin / servant — NOT super_admin itself, and NOT مخدومين),
