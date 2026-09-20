@@ -427,11 +427,26 @@ export async function recordAttendance(qrCodeStr, viewer = null) {
   }
 }
 
-// طلب 2026-09-20: تراجع عن آخر دوسة حضور غلط — بيتحذف سجل الحضور (وبتاع
-// النقاط معاه لو كان الشخص مخدوم) بالـ id اللي رجّعه recordAttendance بالظبط،
-// مش "آخر سجل حضور في الداتابيز" بشكل عام. كده مش هيتمسح غلط سجل حضور حقيقي
-// اتسجل فعلاً (بالماسح أو QR) قبل كده — بس اللي أنا نفسي سجلته دلوقتي وغلطت فيه.
-export async function cancelAttendance({ attendanceLogId, pointsLedgerId } = {}) {
+// طلب 2026-09-20 (نسخة ثانية، نفس اليوم): كان التراجع مقصور على آخر دوسة
+// عملتها إنت نفسك في نفس الجلسة المفتوحة، بالـ id اللي رجّعه recordAttendance
+// بالظبط — لو قفلت الشاشة أو رجعت بعد شوية عايز تصحح حضور حد، الصف كان
+// بيتقفل خالص ومفيش أي طريقة تتراجع بيها. Mr. Gerges طلب إنه يقدر يعدّل في
+// أي وقت رجع فيه، مش بس أول دوسة.
+//
+// التعديل: بدل ما نعتمد على id متسجل عندنا محليًا في نفس الجلسة، بقينا
+// بناخد id سجل الحضور الحقيقي (آخر واحد للشخص ده) من قاعدة البيانات نفسها،
+// أيًا كان مين سجله وإمتى. ده آمن برضو من غير ما يحتاج حماية إضافية، لأن
+// "حاضر" أصلاً معناها "حضر خلال آخر 7 أيام" (PRESENT_WINDOW_DAYS في
+// ClassRosterModal.jsx) — يعني آخر سجل حضور لأي شخص ظاهر "حاضر" مستحيل
+// يكون أقدم من أسبوع، فمفيش سيناريو ممكن فيه حد يمسح غلط سجل حضور قديم
+// حقيقي من شهور بالغلط.
+//
+// النقاط: مفيش عمود بيربط points_ledger بـattendance_logs مباشرة، فبندور
+// على سجل النقاط المطابق بمطابقة (student_id + created_at بالظبط + السبب
+// المحدد اللي بيضيفه recordAttendance() لنقاط الحضور) — الاتنين بيتسجلوا
+// بنفس الـtimestamp بالظبط في recordAttendance()، فالمطابقة موثوقة، وفلتر
+// السبب بيمنع أي تصادم نادر مع نقطة يدوية اتضافت بالصدفة في نفس اللحظة.
+export async function cancelAttendance({ attendanceLogId, studentId, timestamp } = {}) {
   if (!attendanceLogId) throw new Error('لا يوجد سجل حضور يتم التراجع عنه');
 
   if (isSupabaseConfigured()) {
@@ -442,11 +457,13 @@ export async function cancelAttendance({ attendanceLogId, pointsLedgerId } = {})
 
     if (attError) throw attError;
 
-    if (pointsLedgerId) {
+    if (studentId && timestamp) {
       const { error: ledgerError } = await supabase
         .from('points_ledger')
         .delete()
-        .eq('id', pointsLedgerId);
+        .eq('student_id', studentId)
+        .eq('created_at', timestamp)
+        .eq('reason', 'حضور اجتماع مدارس الأحد (رمز QR)');
 
       if (ledgerError) console.error('Failed to remove attendance points on undo:', ledgerError);
     }
@@ -455,8 +472,12 @@ export async function cancelAttendance({ attendanceLogId, pointsLedgerId } = {})
   } else {
     const db = getMockData();
     db.attendance_logs = db.attendance_logs.filter(l => l.id !== attendanceLogId);
-    if (pointsLedgerId) {
-      db.points_ledger = db.points_ledger.filter(p => p.id !== pointsLedgerId);
+    if (studentId && timestamp) {
+      db.points_ledger = db.points_ledger.filter(p => !(
+        p.student_id === studentId &&
+        p.created_at === timestamp &&
+        p.reason === 'حضور اجتماع مدارس الأحد (رمز QR)'
+      ));
     }
     saveMockData(db);
     return { success: true };
@@ -824,15 +845,19 @@ export async function getUsers() {
   return getMockData().users;
 }
 
-// Raw attendance log rows (just user_id + timestamp), for screens that need
+// Raw attendance log rows (id + user_id + timestamp), for screens that need
 // to work out "attended recently" per-person themselves — e.g. أمين الخدمة
 // العامة's class-roster view in Analytics.jsx, which shows حاضر/غايب for
 // every servant and مخدوم inside a class. Only staff roles can read this
 // (RLS's "Staff can view all attendance" policy — see schema.sql), which is
 // fine since every caller of this function is already staff-only screens.
+// طلب 2026-09-20: `id` مضاف هنا (كان بس user_id/timestamp قبل كده) عشان
+// ClassRosterModal.jsx تقدر تلغي أي حضور "حاضر" ظاهر قدامها مباشرة بالـid
+// الحقيقي بتاعه، مش بس اللي هي نفسها سجلته في نفس الجلسة — انظر
+// cancelAttendance() تحت لتفاصيل ليه ده آمن.
 export async function getAttendanceLogs() {
   if (isSupabaseConfigured()) {
-    const { data, error } = await supabase.from('attendance_logs').select('user_id, timestamp');
+    const { data, error } = await supabase.from('attendance_logs').select('id, user_id, timestamp');
     if (error) throw error;
     return data || [];
   }

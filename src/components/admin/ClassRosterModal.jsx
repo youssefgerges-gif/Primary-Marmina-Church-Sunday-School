@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { UserCheck, UserX, Undo2, Shield, Users, Loader2 } from 'lucide-react';
+import { UserX, Undo2, Shield, Users, Loader2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import SaintIconArt from '../common/SaintIconArt';
 import { recordAttendance, cancelAttendance } from '../../services/supabase';
@@ -30,42 +30,62 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
   // فيتسجل حضوره فورًا، من غير ما يحتاج يفتح شاشة الماسح أصلاً.
   const [markingId, setMarkingId] = useState(null);
 
-  // طلب 2026-09-20: لو دوس بالغلط، يقدر يتراجع. بنسجل هنا (id السجل اللي
-  // احنا نفسنا عملناه + توقيته بالظبط) لكل شخص دوسنا عليه في الجلسة دي، عشان
-  // لما يدوس تاني نعرف نمسح بالظبط اللي احنا سجلناه — مش أي سجل حضور تاني
-  // ليه ممكن يكون حصل فعلاً بماسح QR قبل كده. لو حد اتسجل حضوره من طريقة
-  // تانية (مش دوسة إحنا) أو مر وقت وسجل حضور تاني اتسجل بعدنا، مفيش تراجع.
-  const [myAttendance, setMyAttendance] = useState({});
+  // طلب 2026-09-20 (نسخة ثانية، نفس اليوم): التراجع كان مقصور على آخر دوسة
+  // عملها أمين الخدمة نفسه في نفس الجلسة المفتوحة — لو قفل الشاشة ورجع بعد
+  // شوية عايز يصحح غلطة، الصف كان بيتقفل خالص. دلوقتي أي صف "حاضر" ممكن
+  // تدوس عليه تاني وقت ما تيجي، مش بس أول دوسة — لأن الـid الحقيقي بتاع آخر
+  // سجل حضور بييجي من قاعدة البيانات (lastAttendedMap تحت) مش من حالة محلية
+  // بتتصفر أول ما تقفل الشاشة. ده آمن برضو: "حاضر" أصلاً معناها "حضر خلال
+  // آخر 7 أيام" (PRESENT_WINDOW_DAYS تحت)، فمستحيل تلغي غلط سجل حضور حقيقي
+  // أقدم من أسبوع — هو أصلاً مش هيبان "حاضر" لو كان كذلك.
+  const lastAttendedMap = useMemo(() => {
+    const map = new Map();
+    (attendanceLogs || []).forEach(log => {
+      const t = new Date(log.timestamp);
+      const prev = map.get(log.user_id);
+      if (!prev || t > prev.date) {
+        map.set(log.user_id, { id: log.id, timestamp: log.timestamp, date: t });
+      }
+    });
+    return map;
+  }, [attendanceLogs]);
 
-  const handleMarkPresent = async (person, present, canUndo) => {
+  const isPresent = (userId) => {
+    const last = lastAttendedMap.get(userId);
+    if (!last) return false;
+    const days = (new Date() - last.date) / (1000 * 60 * 60 * 24);
+    return days < PRESENT_WINDOW_DAYS;
+  };
+
+  // نص بسيط زي "النهاردة"/"إمبارح"/"من 3 أيام" تحت أي حد "حاضر" — عشان لما
+  // تلغي حضور حد مسجل من كام يوم (مش دلوقتي)، تبقى فاهم إنت بتلغي إيه بالظبط.
+  const formatRelativeDays = (date) => {
+    const days = Math.floor((new Date() - date) / (1000 * 60 * 60 * 24));
+    if (days <= 0) return 'اليوم';
+    if (days === 1) return 'إمبارح';
+    return `من ${days} أيام`;
+  };
+
+  const handleMarkPresent = async (person, present) => {
     if (markingId) return;
-    if (present && !canUndo) return; // صف مقفول، مفيش حاجة نعملها
 
     setMarkingId(person.id);
     try {
-      if (present && canUndo) {
-        const mine = myAttendance[person.id];
-        await cancelAttendance({ attendanceLogId: mine.attendanceLogId, pointsLedgerId: mine.pointsLedgerId });
-        setMyAttendance(prev => {
-          const next = { ...prev };
-          delete next[person.id];
-          return next;
+      if (present) {
+        const last = lastAttendedMap.get(person.id);
+        if (!last) return; // لن يحدث عمليًا — present مبني على نفس الـmap
+        await cancelAttendance({
+          attendanceLogId: last.id,
+          studentId: person.role === 'student' ? person.id : null,
+          timestamp: last.timestamp
         });
         triggerRefresh();
-        showToast('تم التراجع ⏪', `اتلغى حضور ${person.name}`, 0, 'success');
+        showToast('تم إلغاء الحضور ⏪', `اتلغى حضور ${person.name}`, 0, 'success');
       } else {
-        const result = await recordAttendance(
+        await recordAttendance(
           person.qr_code,
           currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null
         );
-        setMyAttendance(prev => ({
-          ...prev,
-          [person.id]: {
-            attendanceLogId: result.attendanceLogId,
-            pointsLedgerId: result.pointsLedgerId,
-            timestampMs: new Date(result.timestamp).getTime()
-          }
-        }));
         triggerRefresh();
         showToast('تم تسجيل الحضور ✅', `تم تسجيل حضور ${person.name} بنجاح`, 0, 'success');
       }
@@ -74,23 +94,6 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
     } finally {
       setMarkingId(null);
     }
-  };
-
-  const lastAttendedMap = useMemo(() => {
-    const map = new Map();
-    (attendanceLogs || []).forEach(log => {
-      const t = new Date(log.timestamp);
-      const prev = map.get(log.user_id);
-      if (!prev || t > prev) map.set(log.user_id, t);
-    });
-    return map;
-  }, [attendanceLogs]);
-
-  const isPresent = (userId) => {
-    const last = lastAttendedMap.get(userId);
-    if (!last) return false;
-    const days = (new Date() - last) / (1000 * 60 * 60 * 24);
-    return days < PRESENT_WINDOW_DAYS;
   };
 
   if (!classInfo) return null;
@@ -109,32 +112,19 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
   const renderRow = (person) => {
     const present = isPresent(person.id);
     const marking = markingId === person.id;
-    const mine = myAttendance[person.id];
-    const lastMs = lastAttendedMap.get(person.id)?.getTime();
-    // قابل للتراجع بس لو إحنا اللي سجلنا الحضور ده دلوقتي في الجلسة دي، ولسه
-    // هو آخر سجل حضور فعلي للشخص ده (يعني مفيش سجل حضور تاني اتسجل بعده).
-    const canUndo = present && !!mine && mine.timestampMs === lastMs;
-    const clickable = !present || canUndo;
+    const last = present ? lastAttendedMap.get(person.id) : null;
 
     return (
       <button
         key={person.id}
         type="button"
-        onClick={() => handleMarkPresent(person, present, canUndo)}
-        disabled={!clickable || marking}
-        title={
-          !present
-            ? 'اضغط لتسجيل حضوره الآن'
-            : canUndo
-              ? 'دوست بالغلط؟ اضغط تاني عشان تلغي الحضور'
-              : undefined
-        }
+        onClick={() => handleMarkPresent(person, present)}
+        disabled={marking}
+        title={!present ? 'اضغط لتسجيل حضوره الآن' : 'اضغط لإلغاء حضوره'}
         className={`w-full flex items-center justify-between gap-2 p-2.5 rounded-xl border transition-all text-right ${
           !present
             ? 'bg-slate-50 border-slate-200/70 hover:border-sky-400 hover:bg-sky-50/60 active:scale-[0.99] cursor-pointer'
-            : canUndo
-              ? 'bg-emerald-50/60 border-emerald-200 hover:border-amber-400 hover:bg-amber-50/60 active:scale-[0.99] cursor-pointer'
-              : 'bg-slate-50 border-slate-200/70 cursor-default'
+            : 'bg-emerald-50/60 border-emerald-200 hover:border-amber-400 hover:bg-amber-50/60 active:scale-[0.99] cursor-pointer'
         }`}
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -150,21 +140,26 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
             )}
           </div>
         </div>
-        <span
-          className={`shrink-0 text-[10px] font-black px-2.5 py-1 rounded-full border flex items-center gap-1 ${
-            present
-              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-              : 'bg-rose-100 text-rose-800 border-rose-200'
-          }`}
-        >
-          {marking ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : present ? (
-            canUndo ? <Undo2 className="w-3 h-3" /> : <UserCheck className="w-3 h-3" />
-          ) : (
-            <UserX className="w-3 h-3" />
+        <span className="shrink-0 flex flex-col items-end gap-0.5">
+          <span
+            className={`text-[10px] font-black px-2.5 py-1 rounded-full border flex items-center gap-1 ${
+              present
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                : 'bg-rose-100 text-rose-800 border-rose-200'
+            }`}
+          >
+            {marking ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : present ? (
+              <Undo2 className="w-3 h-3" />
+            ) : (
+              <UserX className="w-3 h-3" />
+            )}
+            {marking ? (present ? 'جاري الإلغاء...' : 'جاري التسجيل...') : present ? 'حاضر' : 'غايب'}
+          </span>
+          {present && last && !marking && (
+            <span className="text-[9px] text-slate-400 font-bold pl-1">{formatRelativeDays(last.date)}</span>
           )}
-          {marking ? (canUndo ? 'جاري الإلغاء...' : 'جاري التسجيل...') : present ? 'حاضر' : 'غايب'}
         </span>
       </button>
     );
@@ -188,7 +183,7 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
         </div>
 
         <p className="text-[11px] text-slate-400 font-bold -mt-1">
-          اضغط على اسم أي حد "غايب" عشان تسجّل حضوره فورًا، ولو دوست بالغلط اضغط تاني عشان تتراجع 👇
+          اضغط على أي اسم عشان تغيّر حالته فورًا — "غايب" تبقى "حاضر"، و"حاضر" تبقى "غايب"، في أي وقت رجعت فيه 👇
         </p>
 
         {/* Servants in this class */}
