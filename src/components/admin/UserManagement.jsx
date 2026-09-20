@@ -27,6 +27,9 @@ export default function UserManagement() {
     name: '',
     role: 'student',
     phone: '',
+    birth_date: '',
+    address: '',
+    guardian_phone: '',
     class_id: 'grade-5',
     title: 'مخدوم'
   });
@@ -138,6 +141,9 @@ export default function UserManagement() {
       name: '',
       role: 'servant',
       phone: '',
+      birth_date: '',
+      address: '',
+      guardian_phone: '',
       class_id: 'grade-5',
       title: 'خادم'
     });
@@ -151,6 +157,9 @@ export default function UserManagement() {
       name: user.name,
       role: user.role,
       phone: user.phone || '',
+      birth_date: user.birth_date || '',
+      address: user.address || '',
+      guardian_phone: user.guardian_phone || '',
       class_id: user.class_id || 'grade-5',
       title: user.title || (user.role === 'student' ? 'مخدوم' : 'خادم'),
       qr_code: user.qr_code
@@ -552,6 +561,48 @@ export default function UserManagement() {
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500"
             />
           </div>
+
+          {/* طلب 2026-09-20: بيانات إضافية خاصة بالمخدومين بس (تاريخ ميلاد /
+              عنوان / رقم ولي أمر) — من هنا بيتم التعديل عليها لمخدوم موجود
+              أصلاً (add_scoped_student() في schema.sql بيفرضها إلزامية وقت
+              الإضافة الأولى من شاشة "إضافة مخدوم"، بس هنا في شاشة التعديل
+              الشاملة دي مش إلزامية، عشان الشاشة دي بتتستخدم كمان لتعديل خدام
+              مالهمش هذه البيانات أصلاً). */}
+          {formData.role === 'student' && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ الميلاد</label>
+                <input
+                  type="date"
+                  value={formData.birth_date}
+                  onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">العنوان</label>
+                <input
+                  type="text"
+                  placeholder="مثال: شارع الجمهورية، أسوان"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">رقم ولي الأمر</label>
+                <input
+                  type="tel"
+                  placeholder="01234567890"
+                  value={formData.guardian_phone}
+                  onChange={(e) => setFormData({ ...formData, guardian_phone: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+            </>
+          )}
 
           <button
             type="submit"

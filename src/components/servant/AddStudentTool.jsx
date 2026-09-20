@@ -19,14 +19,33 @@ export default function AddStudentTool() {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [address, setAddress] = useState('');
+  const [guardianPhone, setGuardianPhone] = useState('');
   const [classId, setClassId] = useState(CLASSES[0]?.id || '');
   const [loading, setLoading] = useState(false);
   const [addedStudent, setAddedStudent] = useState(null);
 
+  // طلب 2026-09-20 (نسخة ثانية، نفس اليوم): تاريخ الميلاد + العنوان + رقم
+  // ولي الأمر بقوا مطلوبين لأي مخدوم جديد (رقم المخدوم نفسه فضل اختياري) —
+  // نفس الإلزام متفحوص تاني سيرفر سايد جوه add_scoped_student() في
+  // schema.sql، مش بس هنا.
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
       showToast('خطأ في البيانات', 'يرجى إدخال اسم المخدوم', 0, 'error');
+      return;
+    }
+    if (!birthDate) {
+      showToast('خطأ في البيانات', 'يرجى إدخال تاريخ ميلاد المخدوم', 0, 'error');
+      return;
+    }
+    if (!address.trim()) {
+      showToast('خطأ في البيانات', 'يرجى إدخال عنوان المخدوم', 0, 'error');
+      return;
+    }
+    if (!guardianPhone.trim()) {
+      showToast('خطأ في البيانات', 'يرجى إدخال رقم ولي الأمر', 0, 'error');
       return;
     }
     if (isSuperAdmin && !classId) {
@@ -37,7 +56,14 @@ export default function AddStudentTool() {
     setLoading(true);
     try {
       const newStudent = await addScopedStudent(
-        { name: name.trim(), phone: phone.trim(), class_id: isSuperAdmin ? classId : undefined },
+        {
+          name: name.trim(),
+          phone: phone.trim(),
+          birthDate,
+          address: address.trim(),
+          guardianPhone: guardianPhone.trim(),
+          class_id: isSuperAdmin ? classId : undefined
+        },
         currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null
       );
       triggerRefresh();
@@ -45,6 +71,9 @@ export default function AddStudentTool() {
       setAddedStudent(newStudent);
       setName('');
       setPhone('');
+      setBirthDate('');
+      setAddress('');
+      setGuardianPhone('');
       showToast('تم إضافة المخدوم بنجاح! 🎉', `تم تسجيل "${newStudent.name}" في الكشوفات`, 0, 'success');
     } catch (err) {
       showToast('فشل الإضافة', err.message || 'حدث خطأ غير متوقع', 0, 'error');
@@ -140,7 +169,42 @@ export default function AddStudentTool() {
           )}
 
           <div>
-            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم الهاتف (واتساب) — اختياري</label>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">تاريخ الميلاد</label>
+            <input
+              type="date"
+              required
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">العنوان</label>
+            <input
+              type="text"
+              required
+              placeholder="مثال: شارع الجمهورية، أسوان"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم ولي الأمر</label>
+            <input
+              type="tel"
+              required
+              placeholder="01234567890"
+              value={guardianPhone}
+              onChange={(e) => setGuardianPhone(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم هاتف المخدوم (واتساب) — اختياري</label>
             <input
               type="tel"
               placeholder="01234567890"

@@ -23,6 +23,16 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS title TEXT;
 -- person has set their own password (see the "REAL LOGIN" section below).
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS username TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+
+-- طلب 2026-09-20: بيانات إضافية لكل مخدوم بتتاخد وقت إضافته — تاريخ الميلاد،
+-- العنوان، ورقم ولي الأمر (رقم المخدوم نفسه فضل زي ما كان، اختياري). بتتخزن
+-- لأي شخص (مش بس مخدوم) عشان نفس العمود يتستخدم لو أمين الخدمة عدلها لخادم
+-- من شاشة "الخدام والمخدومين" لاحقًا، بس الإلزام (required) بيحصل بس لمخدوم
+-- جديد بيتضاف عن طريق add_scoped_student() تحت.
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS birth_date DATE;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS guardian_phone TEXT;
+
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_key ON public.users (username) WHERE username IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS users_auth_user_id_key ON public.users (auth_user_id) WHERE auth_user_id IS NOT NULL;
 
@@ -576,12 +586,23 @@ GRANT EXECUTE ON FUNCTION public.get_scoped_students() TO authenticated;
 -- class-level admin can't bypass this by scanning a خادم's physical QR card
 -- instead of picking them from this list).
 -- ========================================================
+-- طلب 2026-09-20: بعد ما أضفنا username هنا (كانت مش موجودة قبل كده)، الدالة
+-- دي بقت كمان مصدر بيانات شاشة "أكواد QR المخدومين" الجديدة (StudentQRDirectory.jsx)
+-- عشان هي أصلاً مقفولة صح على فصل كل خادم — مفيش داعي لدالة جديدة تكرر نفس
+-- منطق الصلاحيات. إضافة عمود لعمود الـSELECT بس، مفيش أي تغيير في شرط
+-- الصلاحيات نفسه، فالاستخدام القديم في QRScanner.jsx مش متأثر خالص.
+-- ملحوظة: Postgres بيرفض CREATE OR REPLACE لو شكل الأعمدة الراجعة
+-- (OUT parameters / RETURNS TABLE) اتغيّر، حتى لو الباراميترز الداخلة زي
+-- ما هي — لازم DROP صريح قبلها أول ما تتغيّر أعمدة الإرجاع.
+DROP FUNCTION IF EXISTS public.get_manual_attendance_roster();
+
 CREATE OR REPLACE FUNCTION public.get_manual_attendance_roster()
 RETURNS TABLE (
   id UUID,
   name TEXT,
   role TEXT,
   qr_code TEXT,
+  username TEXT,
   class_id TEXT
 )
 LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
@@ -599,7 +620,7 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT u.id, u.name, u.role, u.qr_code, u.class_id
+  SELECT u.id, u.name, u.role, u.qr_code, u.username, u.class_id
   FROM public.users u
   WHERE (
       v_role = 'super_admin' AND u.role <> 'super_admin'
@@ -638,9 +659,23 @@ GRANT EXECUTE ON FUNCTION public.get_manual_attendance_roster() TO authenticated
 -- the rest of the roster (QR-STU-##### / STU#####), so a freshly-added
 -- student immediately has a working QR card and login code, exactly like
 -- one added through super_admin's full "إدارة المستخدمين" screen.
+--
+-- طلب 2026-09-20 (نسخة ثانية، نفس اليوم): بيانات إضافية إلزامية لكل مخدوم
+-- جديد — تاريخ الميلاد (p_birth_date)، العنوان (p_address)، ورقم ولي الأمر
+-- (p_guardian_phone) — رقم المخدوم نفسه (p_phone) فضل اختياري زي ما كان.
+-- الإلزام بيتفحص هنا سيرفر سايد (RAISE EXCEPTION)، مش بس في الفورم، عشان
+-- محدش يقدر يتجاوزه بنداء مباشر لـRPC. التوقيع (signature) اتغيّر (باراميترز
+-- جداد) فبقى لازم DROP صريح للنسخة القديمة (TEXT, TEXT, TEXT) — Postgres
+-- بيتعامل مع توقيع مختلف كـoverload تاني تمامًا، مش استبدال، فCREATE OR
+-- REPLACE وحده كان هيسيب النسخة القديمة موجودة جنب الجديدة.
 -- ========================================================
+DROP FUNCTION IF EXISTS public.add_scoped_student(TEXT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.add_scoped_student(
   p_name TEXT,
+  p_birth_date DATE,
+  p_address TEXT,
+  p_guardian_phone TEXT,
   p_phone TEXT DEFAULT NULL,
   p_class_id TEXT DEFAULT NULL
 )
@@ -668,6 +703,18 @@ BEGIN
     RAISE EXCEPTION 'اسم المخدوم مطلوب';
   END IF;
 
+  IF p_birth_date IS NULL THEN
+    RAISE EXCEPTION 'تاريخ ميلاد المخدوم مطلوب';
+  END IF;
+
+  IF p_address IS NULL OR TRIM(p_address) = '' THEN
+    RAISE EXCEPTION 'عنوان المخدوم مطلوب';
+  END IF;
+
+  IF p_guardian_phone IS NULL OR TRIM(p_guardian_phone) = '' THEN
+    RAISE EXCEPTION 'رقم ولي الأمر مطلوب';
+  END IF;
+
   IF v_role = 'super_admin' THEN
     IF p_class_id IS NULL OR TRIM(p_class_id) = '' THEN
       RAISE EXCEPTION 'يجب اختيار الفصل الدراسي';
@@ -683,14 +730,17 @@ BEGIN
   v_username := UPPER(REPLACE(REPLACE(v_qr_code, 'QR-', ''), '-', ''));
 
   RETURN QUERY
-  INSERT INTO public.users (name, role, phone, class_id, title, qr_code, username)
-  VALUES (TRIM(p_name), 'student', NULLIF(TRIM(p_phone), ''), v_class_id, 'مخدوم', v_qr_code, v_username)
+  INSERT INTO public.users (name, role, phone, class_id, title, qr_code, username, birth_date, address, guardian_phone)
+  VALUES (
+    TRIM(p_name), 'student', NULLIF(TRIM(p_phone), ''), v_class_id, 'مخدوم', v_qr_code, v_username,
+    p_birth_date, TRIM(p_address), TRIM(p_guardian_phone)
+  )
   RETURNING users.id, users.name, users.qr_code, users.username, users.class_id, users.title;
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.add_scoped_student(TEXT, TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.add_scoped_student(TEXT, TEXT, TEXT) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.add_scoped_student(TEXT, DATE, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.add_scoped_student(TEXT, DATE, TEXT, TEXT, TEXT, TEXT) TO authenticated;
 
 -- ========================================================
 -- CLASS LEADERBOARD — POINTS TAB (لوحة الصدارة، تاب النقاط)

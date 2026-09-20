@@ -747,15 +747,37 @@ export async function getManualAttendanceRoster(viewer = null) {
 // (e.g. to add a non-student, or into another class). `viewer` is only used
 // in local/mock mode to replicate that scoping client-side, since there's no
 // real server-side login there.
-export async function addScopedStudent({ name, phone, class_id } = {}, viewer = null) {
+//
+// طلب 2026-09-20 (نسخة ثانية، نفس اليوم): birth_date/address/guardianPhone
+// بقوا إلزاميين (نفس الإلزام مطبّق سيرفر سايد جوه add_scoped_student() في
+// schema.sql، مش بس هنا) — phone فضل اختياري زي ما كان.
+export async function addScopedStudent({ name, phone, birthDate, address, guardianPhone, class_id } = {}, viewer = null) {
   const cleanName = (name || '').trim();
   if (!cleanName) {
     throw new Error('اسم المخدوم مطلوب');
   }
   const cleanPhone = (phone || '').trim();
+  const cleanBirthDate = (birthDate || '').trim();
+  const cleanAddress = (address || '').trim();
+  const cleanGuardianPhone = (guardianPhone || '').trim();
+  if (!cleanBirthDate) {
+    throw new Error('تاريخ ميلاد المخدوم مطلوب');
+  }
+  if (!cleanAddress) {
+    throw new Error('عنوان المخدوم مطلوب');
+  }
+  if (!cleanGuardianPhone) {
+    throw new Error('رقم ولي الأمر مطلوب');
+  }
 
   if (isSupabaseConfigured()) {
-    const params = { p_name: cleanName, p_phone: cleanPhone || null };
+    const params = {
+      p_name: cleanName,
+      p_birth_date: cleanBirthDate,
+      p_address: cleanAddress,
+      p_guardian_phone: cleanGuardianPhone,
+      p_phone: cleanPhone || null
+    };
     if (viewer && viewer.role === 'super_admin') {
       params.p_class_id = class_id || null;
     }
@@ -775,6 +797,9 @@ export async function addScopedStudent({ name, phone, class_id } = {}, viewer = 
     name: cleanName,
     role: 'student',
     phone: cleanPhone || null,
+    birth_date: cleanBirthDate,
+    address: cleanAddress,
+    guardian_phone: cleanGuardianPhone,
     class_id: resolvedClassId,
     title: 'مخدوم',
     qr_code: qrCode,

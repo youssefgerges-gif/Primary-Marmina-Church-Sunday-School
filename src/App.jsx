@@ -15,6 +15,7 @@ import QRScanner from './components/scanner/QRScanner';
 import ClassLeaderboard from './components/servant/ClassLeaderboard';
 import ManualPointsTool from './components/servant/ManualPointsTool';
 import AddStudentTool from './components/servant/AddStudentTool';
+import StudentQRDirectory from './components/servant/StudentQRDirectory';
 
 // Admin Components
 import Analytics from './components/admin/Analytics';
@@ -32,11 +33,15 @@ import HistoryTimeline from './components/student/HistoryTimeline';
 // طلب 2026-09-20: "الخدام" التلاتة (أمين فصل / أمين فصل مساعد / خادم عادي)
 // بقى عندهم نفس التابات بالظبط — إضافة مخدوم اتضافت للخادم العادي، وافتقاد
 // الفصل اتشالت من الكل خالص وبقت حصرية لأمين الخدمة العامة بس (super_admin).
+// طلب 2026-09-20 (نسخة تالتة، نفس اليوم): "أكواد QR المخدومين" اتفتحت لكل
+// الخدام التلاتة برضو — شاشة جديدة، عرض بس، مقفولة على فصل كل واحد فيهم
+// (StudentQRDirectory.jsx). super_admin مش محتاجها هنا لأن عنده أصلاً شاشة
+// "الخدام والمخدومين" (UserManagement) اللي بتغطي ده وأكتر.
 const TABS_BY_ROLE = {
   super_admin: ['admin-analytics', 'admin-efteqad', 'admin-users', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-attendance-log', 'scanner'],
-  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student'],
-  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student'],
-  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student'],
+  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory'],
+  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory'],
+  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory'],
   student: ['student-card', 'student-history']
 };
 const DEFAULT_TAB_BY_ROLE = {
@@ -177,6 +182,11 @@ function MainContent() {
                 افتقاد الفصل (AbsenceTracker) اتشالت من هنا خالص — بقت حصرية
                 لأمين الخدمة العامة بس، فوق في قسم super_admin. */}
             {activeTab === 'servant-add-student' && <AddStudentTool />}
+            {/* طلب 2026-09-20: أكواد QR المخدومين — عرض بس، مقفولة على فصل
+                صاحب الحساب سيرفر سايد جوه get_manual_attendance_roster()
+                (نفس الدالة المستخدمة أصلاً في تبويب التسجيل اليدوي بشاشة
+                الماسح). */}
+            {activeTab === 'servant-qr-directory' && <StudentQRDirectory />}
           </>
         )}
 
