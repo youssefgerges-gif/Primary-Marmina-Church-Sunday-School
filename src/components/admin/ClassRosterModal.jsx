@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { UserCheck, UserX, Shield, Users, Loader2 } from 'lucide-react';
+import { UserCheck, UserX, Undo2, Shield, Users, Loader2 } from 'lucide-react';
 import Modal from '../common/Modal';
 import SaintIconArt from '../common/SaintIconArt';
-import { recordAttendance } from '../../services/supabase';
+import { recordAttendance, cancelAttendance } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 
 const ROLE_LABELS = {
@@ -24,15 +24,44 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
   // فيتسجل حضوره فورًا، من غير ما يحتاج يفتح شاشة الماسح أصلاً.
   const [markingId, setMarkingId] = useState(null);
 
-  const handleMarkPresent = async (person) => {
+  // طلب 2026-09-20: لو دوس بالغلط، يقدر يتراجع. بنسجل هنا (id السجل اللي
+  // احنا نفسنا عملناه + توقيته بالظبط) لكل شخص دوسنا عليه في الجلسة دي، عشان
+  // لما يدوس تاني نعرف نمسح بالظبط اللي احنا سجلناه — مش أي سجل حضور تاني
+  // ليه ممكن يكون حصل فعلاً بماسح QR قبل كده. لو حد اتسجل حضوره من طريقة
+  // تانية (مش دوسة إحنا) أو مر وقت وسجل حضور تاني اتسجل بعدنا، مفيش تراجع.
+  const [myAttendance, setMyAttendance] = useState({});
+
+  const handleMarkPresent = async (person, present, canUndo) => {
     if (markingId) return;
+    if (present && !canUndo) return; // صف مقفول، مفيش حاجة نعملها
+
     setMarkingId(person.id);
     try {
-      await recordAttendance(person.qr_code);
-      triggerRefresh();
-      showToast('تم تسجيل الحضور ✅', `تم تسجيل حضور ${person.name} بنجاح`, 0, 'success');
+      if (present && canUndo) {
+        const mine = myAttendance[person.id];
+        await cancelAttendance({ attendanceLogId: mine.attendanceLogId, pointsLedgerId: mine.pointsLedgerId });
+        setMyAttendance(prev => {
+          const next = { ...prev };
+          delete next[person.id];
+          return next;
+        });
+        triggerRefresh();
+        showToast('تم التراجع ⏪', `اتلغى حضور ${person.name}`, 0, 'success');
+      } else {
+        const result = await recordAttendance(person.qr_code);
+        setMyAttendance(prev => ({
+          ...prev,
+          [person.id]: {
+            attendanceLogId: result.attendanceLogId,
+            pointsLedgerId: result.pointsLedgerId,
+            timestampMs: new Date(result.timestamp).getTime()
+          }
+        }));
+        triggerRefresh();
+        showToast('تم تسجيل الحضور ✅', `تم تسجيل حضور ${person.name} بنجاح`, 0, 'success');
+      }
     } catch (err) {
-      showToast('تعذر تسجيل الحضور', err.message || 'حدث خطأ أثناء تسجيل الحضور، حاول مرة أخرى', 0, 'error');
+      showToast('تعذر تنفيذ العملية', err.message || 'حدث خطأ، حاول مرة أخرى', 0, 'error');
     } finally {
       setMarkingId(null);
     }
@@ -71,17 +100,32 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
   const renderRow = (person) => {
     const present = isPresent(person.id);
     const marking = markingId === person.id;
+    const mine = myAttendance[person.id];
+    const lastMs = lastAttendedMap.get(person.id)?.getTime();
+    // قابل للتراجع بس لو إحنا اللي سجلنا الحضور ده دلوقتي في الجلسة دي، ولسه
+    // هو آخر سجل حضور فعلي للشخص ده (يعني مفيش سجل حضور تاني اتسجل بعده).
+    const canUndo = present && !!mine && mine.timestampMs === lastMs;
+    const clickable = !present || canUndo;
+
     return (
       <button
         key={person.id}
         type="button"
-        onClick={() => handleMarkPresent(person)}
-        disabled={present || marking}
-        title={present ? undefined : 'اضغط لتسجيل حضوره الآن'}
+        onClick={() => handleMarkPresent(person, present, canUndo)}
+        disabled={!clickable || marking}
+        title={
+          !present
+            ? 'اضغط لتسجيل حضوره الآن'
+            : canUndo
+              ? 'دوست بالغلط؟ اضغط تاني عشان تلغي الحضور'
+              : undefined
+        }
         className={`w-full flex items-center justify-between gap-2 p-2.5 rounded-xl border transition-all text-right ${
-          present
-            ? 'bg-slate-50 border-slate-200/70 cursor-default'
-            : 'bg-slate-50 border-slate-200/70 hover:border-sky-400 hover:bg-sky-50/60 active:scale-[0.99] cursor-pointer'
+          !present
+            ? 'bg-slate-50 border-slate-200/70 hover:border-sky-400 hover:bg-sky-50/60 active:scale-[0.99] cursor-pointer'
+            : canUndo
+              ? 'bg-emerald-50/60 border-emerald-200 hover:border-amber-400 hover:bg-amber-50/60 active:scale-[0.99] cursor-pointer'
+              : 'bg-slate-50 border-slate-200/70 cursor-default'
         }`}
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -107,11 +151,11 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
           {marking ? (
             <Loader2 className="w-3 h-3 animate-spin" />
           ) : present ? (
-            <UserCheck className="w-3 h-3" />
+            canUndo ? <Undo2 className="w-3 h-3" /> : <UserCheck className="w-3 h-3" />
           ) : (
             <UserX className="w-3 h-3" />
           )}
-          {marking ? 'جاري التسجيل...' : present ? 'حاضر' : 'غايب'}
+          {marking ? (canUndo ? 'جاري الإلغاء...' : 'جاري التسجيل...') : present ? 'حاضر' : 'غايب'}
         </span>
       </button>
     );
@@ -135,7 +179,7 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
         </div>
 
         <p className="text-[11px] text-slate-400 font-bold -mt-1">
-          اضغط على اسم أي حد "غايب" عشان تسجّل حضوره فورًا 👇
+          اضغط على اسم أي حد "غايب" عشان تسجّل حضوره فورًا، ولو دوست بالغلط اضغط تاني عشان تتراجع 👇
         </p>
 
         {/* Servants in this class */}

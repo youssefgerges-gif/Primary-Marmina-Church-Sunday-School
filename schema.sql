@@ -722,6 +722,5 @@ BEGIN
   ORDER BY u.name;
 END;
 $$;
-
 REVOKE EXECUTE ON FUNCTION public.get_servant_attendance_log() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_servant_attendance_log() TO authenticated;

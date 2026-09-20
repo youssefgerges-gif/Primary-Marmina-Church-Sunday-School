@@ -337,29 +337,43 @@ export async function recordAttendance(qrCodeStr) {
     }
     if (userError || !user) throw new Error('رمز QR غير مسجل في النظام');
 
-    const { error: attError } = await supabase
+    // Both inserts below share this exact timestamp (rather than each calling
+    // `new Date().toISOString()` separately) so the attendance record and its
+    // points-ledger entry are tied to the same instant — and so the caller
+    // can hand this same timestamp back to cancelAttendance() / compare it
+    // against a freshly-refetched attendance_logs row to confirm "this is
+    // still the same record I just created" before undoing it.
+    const timestamp = new Date().toISOString();
+
+    const { data: attData, error: attError } = await supabase
       .from('attendance_logs')
-      .insert([{ user_id: user.id, timestamp: new Date().toISOString() }]);
+      .insert([{ user_id: user.id, timestamp }])
+      .select()
+      .single();
 
     if (attError) throw attError;
 
     let pointsAdded = 0;
+    let pointsLedgerId = null;
     if (user.role === 'student') {
       pointsAdded = 10;
-      const { error: ledgerError } = await supabase
+      const { data: ledgerData, error: ledgerError } = await supabase
         .from('points_ledger')
         .insert([{
           student_id: user.id,
           amount: pointsAdded,
           reason: 'حضور اجتماع مدارس الأحد (رمز QR)',
           servant_id: 'system',
-          created_at: new Date().toISOString()
-        }]);
+          created_at: timestamp
+        }])
+        .select()
+        .single();
 
       if (ledgerError) console.error('Failed to add attendance points:', ledgerError);
+      else pointsLedgerId = ledgerData?.id ?? null;
     }
 
-    return { success: true, user, pointsAdded };
+    return { success: true, user, pointsAdded, attendanceLogId: attData?.id ?? null, pointsLedgerId, timestamp };
   } else {
     const db = getMockData();
     const user = db.users.find(u => u.qr_code === qrCodeStr);
@@ -368,28 +382,67 @@ export async function recordAttendance(qrCodeStr) {
       throw new Error('رمز QR غير مسجل في النظام');
     }
 
+    const timestamp = new Date().toISOString();
     const attRecord = {
       id: `att-${Date.now()}`,
       user_id: user.id,
-      timestamp: new Date().toISOString()
+      timestamp
     };
     db.attendance_logs.push(attRecord);
 
     let pointsAdded = 0;
+    let pointsLedgerId = null;
     if (user.role === 'student') {
       pointsAdded = 10;
+      pointsLedgerId = `pt-${Date.now()}`;
       db.points_ledger.push({
-        id: `pt-${Date.now()}`,
+        id: pointsLedgerId,
         student_id: user.id,
         amount: 10,
         reason: 'حضور اجتماع مدارس الأحد (رمز QR)',
         servant_id: 'system',
-        created_at: new Date().toISOString()
+        created_at: timestamp
       });
     }
 
     saveMockData(db);
-    return { success: true, user, pointsAdded };
+    return { success: true, user, pointsAdded, attendanceLogId: attRecord.id, pointsLedgerId, timestamp };
+  }
+}
+
+// طلب 2026-09-20: تراجع عن آخر دوسة حضور غلط — بيتحذف سجل الحضور (وبتاع
+// النقاط معاه لو كان الشخص مخدوم) بالـ id اللي رجّعه recordAttendance بالظبط،
+// مش "آخر سجل حضور في الداتابيز" بشكل عام. كده مش هيتمسح غلط سجل حضور حقيقي
+// اتسجل فعلاً (بالماسح أو QR) قبل كده — بس اللي أنا نفسي سجلته دلوقتي وغلطت فيه.
+export async function cancelAttendance({ attendanceLogId, pointsLedgerId } = {}) {
+  if (!attendanceLogId) throw new Error('لا يوجد سجل حضور يتم التراجع عنه');
+
+  if (isSupabaseConfigured()) {
+    const { error: attError } = await supabase
+      .from('attendance_logs')
+      .delete()
+      .eq('id', attendanceLogId);
+
+    if (attError) throw attError;
+
+    if (pointsLedgerId) {
+      const { error: ledgerError } = await supabase
+        .from('points_ledger')
+        .delete()
+        .eq('id', pointsLedgerId);
+
+      if (ledgerError) console.error('Failed to remove attendance points on undo:', ledgerError);
+    }
+
+    return { success: true };
+  } else {
+    const db = getMockData();
+    db.attendance_logs = db.attendance_logs.filter(l => l.id !== attendanceLogId);
+    if (pointsLedgerId) {
+      db.points_ledger = db.points_ledger.filter(p => p.id !== pointsLedgerId);
+    }
+    saveMockData(db);
+    return { success: true };
   }
 }
 
