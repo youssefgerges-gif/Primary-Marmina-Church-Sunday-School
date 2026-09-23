@@ -329,7 +329,12 @@ const saveMockData = (data) => {
 // عليها هي سياسة "Staff can record attendance" في schema.sql، اللي بترفض
 // الإدراج فعليًا على مستوى قاعدة البيانات إلا لو الشخص المسجَّل حضوره
 // مخدوم، أو الشخص المسجِّل نفسه أمين الخدمة العامة.
-export async function recordAttendance(qrCodeStr, viewer = null) {
+// طلب 2026-09-23: logType بيفرّق بين حضور مدارس الأحد العادي ('sunday_school'،
+// الافتراضي، زي ما كان دايمًا) وحضور اجتماع الخدام المنفصل ('servants_meeting')
+// — نفس الدالة والـUI (كاميرا + يدوي)، بس بيتسجل في attendance_logs بعمود
+// log_type مختلف، فمفيش تداخل بين الاتنين في أي شاشة تانية (افتقاد الفصل،
+// سجل حضور الخدام، كشف الفصل...).
+export async function recordAttendance(qrCodeStr, viewer = null, logType = 'sunday_school') {
   if (isSupabaseConfigured()) {
     const { data: user, error: userError } = await supabase
       .from('users')
@@ -349,6 +354,9 @@ export async function recordAttendance(qrCodeStr, viewer = null) {
     if (user.role !== 'student' && viewer && viewer.role !== 'super_admin') {
       throw new Error('غير مصرح لك بتسجيل حضور خادم — تسجيل حضور الخدام لأمين الخدمة العامة فقط');
     }
+    if (logType === 'servants_meeting' && user.role === 'student') {
+      throw new Error('اجتماع الخدام مخصص للخدام بس، مش للمخدومين');
+    }
 
     // Both inserts below share this exact timestamp (rather than each calling
     // `new Date().toISOString()` separately) so the attendance record and its
@@ -360,7 +368,7 @@ export async function recordAttendance(qrCodeStr, viewer = null) {
 
     const { data: attData, error: attError } = await supabase
       .from('attendance_logs')
-      .insert([{ user_id: user.id, timestamp }])
+      .insert([{ user_id: user.id, timestamp, log_type: logType }])
       .select()
       .single();
 
@@ -368,7 +376,7 @@ export async function recordAttendance(qrCodeStr, viewer = null) {
 
     let pointsAdded = 0;
     let pointsLedgerId = null;
-    if (user.role === 'student') {
+    if (user.role === 'student' && logType === 'sunday_school') {
       pointsAdded = 10;
       const { data: ledgerData, error: ledgerError } = await supabase
         .from('points_ledger')
@@ -398,18 +406,22 @@ export async function recordAttendance(qrCodeStr, viewer = null) {
     if (user.role !== 'student' && viewer && viewer.role !== 'super_admin') {
       throw new Error('غير مصرح لك بتسجيل حضور خادم — تسجيل حضور الخدام لأمين الخدمة العامة فقط');
     }
+    if (logType === 'servants_meeting' && user.role === 'student') {
+      throw new Error('اجتماع الخدام مخصص للخدام بس، مش للمخدومين');
+    }
 
     const timestamp = new Date().toISOString();
     const attRecord = {
       id: `att-${Date.now()}`,
       user_id: user.id,
-      timestamp
+      timestamp,
+      log_type: logType
     };
     db.attendance_logs.push(attRecord);
 
     let pointsAdded = 0;
     let pointsLedgerId = null;
-    if (user.role === 'student') {
+    if (user.role === 'student' && logType === 'sunday_school') {
       pointsAdded = 10;
       pointsLedgerId = `pt-${Date.now()}`;
       db.points_ledger.push({
@@ -888,13 +900,17 @@ export async function getUsers() {
 // ClassRosterModal.jsx تقدر تلغي أي حضور "حاضر" ظاهر قدامها مباشرة بالـid
 // الحقيقي بتاعه، مش بس اللي هي نفسها سجلته في نفس الجلسة — انظر
 // cancelAttendance() تحت لتفاصيل ليه ده آمن.
+// طلب 2026-09-23: بعد إضافة حضور اجتماع الخدام المنفصل، الدالة دي (اللي
+// كشف الفصل وحساب حاضر/غايب في الإحصائيات العامة بيعتمدوا عليها) لازم تفضل
+// مقصورة على حضور مدارس الأحد بس — غير كده خادم حضر اجتماع أبونا هيبان
+// "حاضر" في كشف فصله وهو أصلاً معندوش أي حضور مدارس أحد حقيقي.
 export async function getAttendanceLogs() {
   if (isSupabaseConfigured()) {
-    const { data, error } = await supabase.from('attendance_logs').select('id, user_id, timestamp');
+    const { data, error } = await supabase.from('attendance_logs').select('id, user_id, timestamp').eq('log_type', 'sunday_school');
     if (error) throw error;
     return data || [];
   }
-  return getMockData().attendance_logs;
+  return getMockData().attendance_logs.filter(l => (l.log_type || 'sunday_school') === 'sunday_school');
 }
 
 // سجل غياب وحضور الخدام (super_admin فقط) — بيرجع لكل خادم (أمين فصل / أمين
@@ -935,7 +951,7 @@ export async function getServantAttendanceLog() {
   return servants.map(s => {
     const attendedFridaySet = new Set(
       db.attendance_logs
-        .filter(l => l.user_id === s.id)
+        .filter(l => l.user_id === s.id && (l.log_type || 'sunday_school') === 'sunday_school')
         .map(l => new Date(l.timestamp).toDateString())
         .filter(dateStr => fridaySet.has(dateStr))
     );
@@ -949,6 +965,49 @@ export async function getServantAttendanceLog() {
       total_fridays: fridays.length,
       attended_fridays: attended,
       attendance_percent: fridays.length === 0 ? 0 : Math.round((attended / fridays.length) * 1000) / 10
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+}
+
+// سجل حضور اجتماع الخدام — منفصل تمامًا عن سجل حضور مدارس الأحد فوق (طلب
+// 2026-09-23). اجتماع أبونا بالخدام لمناقشة أمور الخدمة تقريبًا كل أسبوعين،
+// مش جدول ثابت زي جمعة مدارس الأحد، فالنسبة هنا بتتحسب على *الأحداث الفعلية*
+// بدل تاريخ موسم ثابت: كل تاريخ اتسجل فيه حضور اجتماع لأي خادم بيتحسب
+// "اجتماع" واحد، ونسبة كل خادم = عدد الاجتماعات اللي حضرها ÷ إجمالي عدد
+// الاجتماعات اللي فعلاً اتسجل فيها حضور لحد دلوقتي. الحساب الحقيقي بيتم
+// بالكامل سيرفر سايد جوه get_servant_meeting_attendance_log() في schema.sql
+// (super_admin بس، SECURITY DEFINER) — الكود تحت مجرد نسخة مطابقة لوضع
+// التجربة المحلي.
+export async function getServantMeetingAttendanceLog() {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_servant_meeting_attendance_log');
+    if (error) throw new Error(error.message || 'تعذر تحميل سجل حضور اجتماع الخدام');
+    return data || [];
+  }
+
+  const db = getMockData();
+  const meetingLogs = db.attendance_logs.filter(l => l.log_type === 'servants_meeting');
+  const meetingDates = new Set(meetingLogs.map(l => new Date(l.timestamp).toDateString()));
+  const totalMeetings = meetingDates.size;
+
+  const servants = db.users.filter(u => ['class_admin', 'assistant_admin', 'servant'].includes(u.role));
+
+  return servants.map(s => {
+    const attendedDates = new Set(
+      meetingLogs
+        .filter(l => l.user_id === s.id)
+        .map(l => new Date(l.timestamp).toDateString())
+    );
+    const attended = attendedDates.size;
+    return {
+      id: s.id,
+      name: s.name,
+      role: s.role,
+      class_id: s.class_id,
+      qr_code: s.qr_code,
+      total_meetings: totalMeetings,
+      attended_meetings: attended,
+      attendance_percent: totalMeetings === 0 ? 0 : Math.round((attended / totalMeetings) * 1000) / 10
     };
   }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 }

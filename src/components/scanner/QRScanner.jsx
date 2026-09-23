@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle, Search } from 'lucide-react';
+import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle, Search, Users } from 'lucide-react';
 import { recordAttendance, getManualAttendanceRoster, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -24,6 +24,16 @@ export default function QRScanner({ onScanSuccess }) {
   const [cameraError, setCameraError] = useState(null);
   const [cameraRetryKey, setCameraRetryKey] = useState(0);
   const scannerRef = useRef(null);
+
+  // طلب 2026-09-23: تسجيل حضور اجتماع الخدام (اجتماع أبونا بالخدام لمناقشة
+  // أمور الخدمة، منفصل خالص عن مدارس الأحد) — أمين الخدمة العامة بس هو اللي
+  // يقدر يسجله (نفس تبويب الكاميرا/اليدوي، بس بـlog_type مختلف في قاعدة
+  // البيانات — انظر recordAttendance() في supabase.js). لأي دور تاني،
+  // attendanceMode بتفضل 'sunday_school' زي ما كانت دايمًا، مفيش أي تغيير
+  // في سلوكهم.
+  const isSuperAdmin = currentUser?.role === 'super_admin';
+  const [attendanceMode, setAttendanceMode] = useState('sunday_school'); // 'sunday_school' or 'servants_meeting'
+  const isMeetingMode = isSuperAdmin && attendanceMode === 'servants_meeting';
 
   // Class-scoped roster for the manual picker tab — servant, class_admin and
   // assistant_admin all see مخدومين (students) of their own class only; any
@@ -57,7 +67,8 @@ export default function QRScanner({ onScanSuccess }) {
     try {
       const result = await recordAttendance(
         qrString,
-        currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null
+        currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null,
+        isMeetingMode ? 'servants_meeting' : 'sunday_school'
       );
       setLastScannedUser(result.user);
       triggerRefresh();
@@ -67,6 +78,13 @@ export default function QRScanner({ onScanSuccess }) {
           'تم تسجيل الحضور وإضافة النقاط! 🎉',
           `أهلاً بك يا ${result.user.name}. تم تسجيل حضورك وإضافة +${result.pointsAdded} نقاط لرصيدك!`,
           result.pointsAdded,
+          'success'
+        );
+      } else if (isMeetingMode) {
+        showToast(
+          'تم تسجيل حضور اجتماع الخدام ⛪️',
+          `أهلاً بك يا ${result.user.name} في اجتماع الخدام!`,
+          0,
           'success'
         );
       } else {
@@ -161,10 +179,17 @@ export default function QRScanner({ onScanSuccess }) {
     };
   }, [scanMethod, cameraRetryKey]);
 
+  // اجتماع الخدام (طلب 2026-09-23) لمخدومين — بس للخدام (أمين فصل / أمين فصل
+  // مساعد / خادم). في وضع الاجتماع بنفلتر المخدومين برّه القائمة (سواء
+  // للكاميرا أو اليدوي) — مش قاعدة بيانات جديدة، بس فلترة على نفس القائمة
+  // اللي أمين الخدمة العامة شايفها أصلاً (get_manual_attendance_roster()
+  // بترجعله الكل، خدام ومخدومين مع بعض).
+  const modeScopedUsers = isMeetingMode ? rosterUsers.filter(u => u.role !== 'student') : rosterUsers;
+
   const trimmedManualQuery = manualSearchQuery.trim();
   const filteredRosterUsers = trimmedManualQuery
-    ? rosterUsers.filter(u => u.name.includes(trimmedManualQuery))
-    : rosterUsers;
+    ? modeScopedUsers.filter(u => u.name.includes(trimmedManualQuery))
+    : modeScopedUsers;
 
   // تقسيم القائمة المفلترة على الفصول الـ 7 — لأمين الخدمة العامة فقط (مش
   // مقفول على فصل واحد زي باقي الأدوار)، وبنسيب أي فصل من غير حد ظاهر فيه
@@ -209,15 +234,44 @@ export default function QRScanner({ onScanSuccess }) {
         <div className="flex items-center justify-between gap-4">
           <div>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold mb-2">
-              <Camera className="w-3.5 h-3.5" /> ماسح كارت الخدمة
+              <Camera className="w-3.5 h-3.5" /> {isMeetingMode ? 'ماسح اجتماع الخدام' : 'ماسح كارت الخدمة'}
             </span>
-            <h2 className="text-2xl font-black">تسجيل حضور المخدومين والخدام</h2>
-            <p className="text-sky-100 text-xs mt-1">وجه كاميرا الهاتف نحو رمز QR الخاص بالكارت الخاص بالمخدوم</p>
+            <h2 className="text-2xl font-black">{isMeetingMode ? 'تسجيل حضور اجتماع الخدام' : 'تسجيل حضور المخدومين والخدام'}</h2>
+            <p className="text-sky-100 text-xs mt-1">
+              {isMeetingMode
+                ? 'وجه الكاميرا نحو رمز QR الخاص بكارت الخادم، أو اختاره من القائمة يدويًا'
+                : 'وجه كاميرا الهاتف نحو رمز QR الخاص بالكارت الخاص بالمخدوم'}
+            </p>
           </div>
           <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-amber-300 shrink-0">
             <QrCode className="w-8 h-8" />
           </div>
         </div>
+
+        {/* طلب 2026-09-23: أمين الخدمة العامة بس شايف التبويب ده — بيبدّل بين
+            تسجيل حضور مدارس الأحد العادي وتسجيل حضور اجتماع الخدام المنفصل
+            (اجتماع أبونا بالخدام). باقي الأدوار مش شايفينه خالص، وسلوكهم
+            زي ما كان بالظبط. */}
+        {isSuperAdmin && (
+          <div className="flex items-center gap-2 mt-4 bg-black/20 p-1.5 rounded-2xl backdrop-blur-md">
+            <button
+              onClick={() => { setAttendanceMode('sunday_school'); setLastScannedUser(null); }}
+              className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
+                attendanceMode === 'sunday_school' ? 'bg-white text-sky-800 shadow-md' : 'text-white/80 hover:text-white'
+              }`}
+            >
+              <QrCode className="w-4 h-4" /> حضور مدارس الأحد
+            </button>
+            <button
+              onClick={() => { setAttendanceMode('servants_meeting'); setLastScannedUser(null); }}
+              className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
+                attendanceMode === 'servants_meeting' ? 'bg-white text-amber-700 shadow-md' : 'text-white/80 hover:text-white'
+              }`}
+            >
+              <Users className="w-4 h-4" /> حضور اجتماع الخدام
+            </button>
+          </div>
+        )}
 
         {/* Mode Switcher Tabs (Camera vs Quick Picker for Desktop Testing) */}
         <div className="flex items-center gap-2 mt-5 bg-black/20 p-1.5 rounded-2xl backdrop-blur-md">
@@ -273,15 +327,19 @@ export default function QRScanner({ onScanSuccess }) {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
               <Smartphone className="w-4 h-4 text-sky-600" />
-              {isScoped
-                ? `تسجيل حضور — فصل ${scopedClassName || ''} فقط`
-                : 'اختر شخص لتسجيل حضوره'}
+              {isMeetingMode
+                ? 'اختر خادمًا لتسجيل حضوره في الاجتماع'
+                : isScoped
+                  ? `تسجيل حضور — فصل ${scopedClassName || ''} فقط`
+                  : 'اختر شخص لتسجيل حضوره'}
             </h3>
             <span className="text-xs text-slate-500 font-medium">اضغط للتسجيل الفوري</span>
           </div>
 
-          {rosterUsers.length === 0 ? (
-            <p className="text-center text-slate-400 text-xs py-8">لا يوجد أشخاص لعرضهم في فصلك حاليًا.</p>
+          {modeScopedUsers.length === 0 ? (
+            <p className="text-center text-slate-400 text-xs py-8">
+              {isMeetingMode ? 'لا يوجد خدام لعرضهم حاليًا.' : 'لا يوجد أشخاص لعرضهم في فصلك حاليًا.'}
+            </p>
           ) : (
             <>
               {/* Search by name */}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarCheck, Search, TrendingUp } from 'lucide-react';
-import { getServantAttendanceLog, CLASSES } from '../../services/supabase';
+import { CalendarCheck, Search, TrendingUp, Users } from 'lucide-react';
+import { getServantAttendanceLog, getServantMeetingAttendanceLog, CLASSES } from '../../services/supabase';
 
 const ROLE_LABELS = {
   class_admin: 'أمين فصل',
@@ -21,7 +21,20 @@ function attendanceBarColor(percent) {
   return 'bg-rose-500';
 }
 
+// طلب 2026-09-23: "عايز غياب الاجتماع دا يبقي منفصل عن غياب مدارس الاحد
+// للخدام دا ليه نسبة و دا ليه نسبة" — نفس الشاشة، تبويبين منفصلين تمامًا:
+// حضور مدارس الأحد (زي ما كان) وحضور اجتماع الخدام (جديد، بيانات وحساب نسبة
+// مختلفين تمامًا — انظر get_servant_meeting_attendance_log() في schema.sql).
+// بنوحّد شكل الصفوف هنا (attended/total) عشان الجدول تحت يتعامل مع
+// المصدرين بنفس الكود، من غير ما يهتم بأسماء الأعمدة المختلفة اللي راجعة
+// من كل دالة (total_fridays/attended_fridays مقابل total_meetings/attended_meetings).
+const TABS = [
+  { key: 'sunday_school', label: 'حضور مدارس الأحد', icon: CalendarCheck },
+  { key: 'servants_meeting', label: 'حضور اجتماع الخدام', icon: Users }
+];
+
 export default function ServantAttendanceLog() {
+  const [activeTab, setActiveTab] = useState('sunday_school');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,23 +44,29 @@ export default function ServantAttendanceLog() {
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
-    getServantAttendanceLog()
+    const fetcher = activeTab === 'servants_meeting' ? getServantMeetingAttendanceLog : getServantAttendanceLog;
+    fetcher()
       .then(data => {
         if (isMounted) {
-          setRows(data);
+          const normalized = (data || []).map(r => ({
+            ...r,
+            attended: activeTab === 'servants_meeting' ? r.attended_meetings : r.attended_fridays,
+            total: activeTab === 'servants_meeting' ? r.total_meetings : r.total_fridays
+          }));
+          setRows(normalized);
           setError(null);
         }
       })
       .catch(err => {
-        if (isMounted) setError(err.message || 'تعذر تحميل سجل حضور الخدام');
+        if (isMounted) setError(err.message || (activeTab === 'servants_meeting' ? 'تعذر تحميل سجل حضور اجتماع الخدام' : 'تعذر تحميل سجل حضور الخدام'));
       })
       .finally(() => {
         if (isMounted) setLoading(false);
       });
     return () => { isMounted = false; };
-  }, []);
+  }, [activeTab]);
 
-  const totalFridaysSoFar = rows[0]?.total_fridays ?? 0;
+  const totalSoFar = rows[0]?.total ?? 0;
   const trimmedQuery = searchQuery.trim();
 
   const visibleRows = rows
@@ -55,20 +74,47 @@ export default function ServantAttendanceLog() {
     .filter(r => !trimmedQuery || r.name.includes(trimmedQuery));
 
   const className = (classId) => CLASSES.find(c => c.id === classId)?.name || '—';
+  const countColumnLabel = activeTab === 'servants_meeting' ? 'عدد الاجتماعات الحاضرة' : 'عدد الجُمع الحاضرة';
 
   return (
     <div className="space-y-6 dir-rtl text-right">
 
       {/* Banner */}
-      <div className="bg-gradient-to-r from-indigo-700 via-sky-700 to-indigo-800 rounded-3xl p-6 text-white shadow-md flex items-center justify-between relative overflow-hidden">
-        <div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold mb-2">
-            <CalendarCheck className="w-3.5 h-3.5" /> سجل غياب وحضور الخدام
-          </span>
-          <h2 className="text-xl sm:text-2xl font-black">موسم متابعة الحضور {SEASON_START_LABEL} — {SEASON_END_LABEL}</h2>
+      <div className="bg-gradient-to-r from-indigo-700 via-sky-700 to-indigo-800 rounded-3xl p-6 text-white shadow-md relative overflow-hidden space-y-4">
+        <div className="flex items-center justify-between relative">
+          <div>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold mb-2">
+              <CalendarCheck className="w-3.5 h-3.5" /> سجل غياب وحضور الخدام
+            </span>
+            {activeTab === 'servants_meeting' ? (
+              <h2 className="text-xl sm:text-2xl font-black">حضور اجتماع الخدام (اجتماع أبونا بالخدام)</h2>
+            ) : (
+              <h2 className="text-xl sm:text-2xl font-black">موسم متابعة الحضور {SEASON_START_LABEL} — {SEASON_END_LABEL}</h2>
+            )}
+            <p className="text-sky-100 text-xs mt-1">
+              {activeTab === 'servants_meeting'
+                ? 'النسبة محسوبة على عدد الاجتماعات اللي فعلاً اتسجل فيها حضور — مش تاريخ موسم ثابت، لأن معاد الاجتماع تقريبي (كل أسبوعين)'
+                : 'النسبة محسوبة على جُمع موسم مدارس الأحد الثابت (الجمعة 5:30 عصرًا)'}
+            </p>
+          </div>
+          <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-sky-200 shrink-0 shadow-inner">
+            <TrendingUp className="w-10 h-10" />
+          </div>
         </div>
-        <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-sky-200 shrink-0 shadow-inner">
-          <TrendingUp className="w-10 h-10" />
+
+        {/* Tab switcher — طلب 2026-09-23: نسبتين منفصلتين تمامًا */}
+        <div className="flex items-center gap-2 bg-black/20 p-1.5 rounded-2xl backdrop-blur-md">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => { setActiveTab(t.key); setSearchQuery(''); setClassFilter('all'); }}
+              className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
+                activeTab === t.key ? 'bg-white text-indigo-800 shadow-md' : 'text-white/80 hover:text-white'
+              }`}
+            >
+              <t.icon className="w-4 h-4" /> {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -105,9 +151,11 @@ export default function ServantAttendanceLog() {
           <div className="py-12 text-center text-slate-400 font-bold text-sm">جاري تحميل سجل الحضور... ⏳</div>
         ) : error ? (
           <div className="py-12 text-center text-rose-500 font-bold text-sm bg-rose-50 border border-rose-100 rounded-2xl p-4">{error}</div>
-        ) : totalFridaysSoFar === 0 ? (
+        ) : totalSoFar === 0 ? (
           <div className="py-12 text-center text-slate-400 font-bold text-sm bg-slate-50 border border-slate-100 rounded-2xl p-4">
-            موسم متابعة حضور الخدام لسه ما بدأش — هيبدأ من أول جمعة {SEASON_START_LABEL} 📅
+            {activeTab === 'servants_meeting'
+              ? 'لسه مفيش أي اجتماع خدام اتسجل له حضور — سجّل حضور أول اجتماع من شاشة "تسجيل حضور" 📋'
+              : `موسم متابعة حضور الخدام لسه ما بدأش — هيبدأ من أول جمعة ${SEASON_START_LABEL} 📅`}
           </div>
         ) : visibleRows.length === 0 ? (
           <div className="py-12 text-center text-slate-400 font-bold text-sm bg-slate-50 border border-slate-100 rounded-2xl p-4">
@@ -123,7 +171,7 @@ export default function ServantAttendanceLog() {
                     <th className="p-3.5">الاسم</th>
                     <th className="p-3.5">الصفة</th>
                     <th className="p-3.5">الفصل</th>
-                    <th className="p-3.5">عدد الجُمع الحاضرة</th>
+                    <th className="p-3.5">{countColumnLabel}</th>
                     <th className="p-3.5">نسبة الحضور</th>
                   </tr>
                 </thead>
@@ -142,7 +190,7 @@ export default function ServantAttendanceLog() {
                         </span>
                       </td>
                       <td className="p-3.5 text-slate-600 font-semibold">{className(r.class_id)}</td>
-                      <td className="p-3.5 font-bold text-slate-700">{r.attended_fridays} / {r.total_fridays}</td>
+                      <td className="p-3.5 font-bold text-slate-700">{r.attended} / {r.total}</td>
                       <td className="p-3.5">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden min-w-[60px]">
@@ -172,7 +220,7 @@ export default function ServantAttendanceLog() {
                       <p className="font-bold text-slate-900 text-sm truncate">{r.name}</p>
                       <p className="text-[10px] text-slate-500 truncate">{ROLE_LABELS[r.role] || r.role} — {className(r.class_id)}</p>
                     </div>
-                    <span className="shrink-0 font-black text-xs text-slate-700">{r.attended_fridays}/{r.total_fridays}</span>
+                    <span className="shrink-0 font-black text-xs text-slate-700">{r.attended}/{r.total}</span>
                   </div>
                   <div className="flex items-center gap-2 mt-2.5">
                     <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">

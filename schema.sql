@@ -47,6 +47,16 @@ CREATE TABLE IF NOT EXISTS public.attendance_logs (
   timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- طلب 2026-09-23: تسجيل حضور منفصل خالص عن مدارس الأحد لـ"اجتماع الخدام"
+-- (اجتماع أبونا بالخدام لمناقشة أمور الخدمة، تقريبًا كل أسبوعين) — نفس جدول
+-- attendance_logs بيتستخدم لحفظ النوعين (مفيش جدول جديد ولا تسجيل مزدوج)،
+-- وعمود log_type هو اللي بيفرّق بينهم. القديم كله (كل سجل اتسجل قبل السطر ده)
+-- بيتحسب تلقائيًا 'sunday_school' (القيمة الافتراضية)، فمفيش أي داتا قديمة
+-- بتتلخبط أو تتفسر غلط كاجتماع خدام.
+ALTER TABLE public.attendance_logs ADD COLUMN IF NOT EXISTS log_type TEXT NOT NULL DEFAULT 'sunday_school';
+ALTER TABLE public.attendance_logs DROP CONSTRAINT IF EXISTS attendance_logs_log_type_check;
+ALTER TABLE public.attendance_logs ADD CONSTRAINT attendance_logs_log_type_check CHECK (log_type IN ('sunday_school', 'servants_meeting'));
+
 -- 3. Create Points Ledger Table
 CREATE TABLE IF NOT EXISTS public.points_ledger (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -551,7 +561,11 @@ BEGIN
   WITH scoped AS (
     SELECT
       u.id, u.name, u.phone, u.qr_code, u.class_id, u.role, u.created_at,
-      (SELECT MAX(al.timestamp) FROM public.attendance_logs al WHERE al.user_id = u.id) AS last_attended_at
+      -- طلب 2026-09-23: بعد إضافة تسجيل حضور اجتماع الخدام المنفصل، آخر حضور
+      -- هنا لازم يبقى مقصور على حضور مدارس الأحد بس — عشان خادم يحضر اجتماع
+      -- الخدام (اجتماع أبونا) ميعتبرش ده "حضر مدارس الأحد" ويصفّرله عداد
+      -- الافتقاد بالغلط.
+      (SELECT MAX(al.timestamp) FROM public.attendance_logs al WHERE al.user_id = u.id AND al.log_type = 'sunday_school') AS last_attended_at
     FROM public.users u
     WHERE u.role <> 'super_admin'
       AND (v_role = 'super_admin' OR u.class_id = v_class_id)
@@ -996,9 +1010,11 @@ BEGIN
     SELECT
       scoped.id, scoped.name, scoped.qr_code,
       GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - scoped.created_at)) / 604800))::INTEGER AS elapsed_weeks_calc,
+      -- طلب 2026-09-23: مقصور على حضور مدارس الأحد بس (دفاعيًا — الطلاب
+      -- أصلاً مش بيتسجلهم حضور اجتماع خدام، بس بنفلتر هنا كمان للأمان).
       (SELECT COUNT(DISTINCT FLOOR(EXTRACT(EPOCH FROM (al.timestamp - scoped.created_at)) / 604800))
        FROM public.attendance_logs al
-       WHERE al.user_id = scoped.id AND al.timestamp >= scoped.created_at)::INTEGER AS attended_weeks_calc
+       WHERE al.user_id = scoped.id AND al.timestamp >= scoped.created_at AND al.log_type = 'sunday_school')::INTEGER AS attended_weeks_calc
     FROM scoped
   )
   SELECT
@@ -1086,6 +1102,7 @@ BEGIN
     ON EXISTS (
       SELECT 1 FROM public.attendance_logs al
       WHERE al.user_id = u.id
+        AND al.log_type = 'sunday_school'
         AND (al.timestamp AT TIME ZONE 'Africa/Cairo')::DATE = ef.friday_date
     )
   WHERE u.role IN ('class_admin', 'assistant_admin', 'servant')
@@ -1095,3 +1112,77 @@ END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.get_servant_attendance_log() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_servant_attendance_log() TO authenticated;
+
+-- ========================================================
+-- سجل حضور اجتماع الخدام (SEPARATE من مدارس الأحد) — super_admin فقط
+-- طلب 2026-09-23: "عايز نعمل غياب الاجتماع للخدام... عايز غياب الاجتماع دا
+-- يبقي منفصل عن غياب مدارس الاحد للخدام دا ليه نسبة و دا ليه نسبة" — اجتماع
+-- أبونا بالخدام لمناقشة أمور الخدمة، تقريبًا كل أسبوعين (مش جدول ثابت زي
+-- جمعة مدارس الأحد، فمينفعش نحسب "كل أسبوعين من تاريخ معين" لأن المواعيد
+-- الفعلية ممكن تزيح). بدل كده، النسبة بتتحسب على *الأحداث الفعلية*: كل
+-- تاريخ (يوم كامل بتوقيت القاهرة) اتسجل فيه حضور اجتماع لأي خادم كان بيتحسب
+-- "اجتماع" واحد، وكل خادم نسبته = عدد الاجتماعات اللي حضرها ÷ إجمالي عدد
+-- الاجتماعات اللي فعلاً اتسجل فيها حضور (لأي حد) لحد دلوقتي.
+--
+-- نفس جدول attendance_logs (log_type = 'servants_meeting')، نفس تعريف
+-- "الخدام" (class_admin/assistant_admin/servant) المستخدم في
+-- get_servant_attendance_log() فوق، ونفس نمط SECURITY DEFINER + REVOKE/GRANT
+-- (super_admin بس — مين غيره أصلاً هو اللي يقدر يسجل حضور الاجتماع ده، شوف
+-- "Staff can record attendance" فوق).
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.get_servant_meeting_attendance_log()
+RETURNS TABLE (
+  id UUID,
+  name TEXT,
+  role TEXT,
+  class_id TEXT,
+  qr_code TEXT,
+  total_meetings INTEGER,
+  attended_meetings INTEGER,
+  attendance_percent NUMERIC
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role <> 'super_admin' THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض سجل حضور اجتماع الخدام';
+  END IF;
+
+  RETURN QUERY
+  WITH meeting_dates AS (
+    SELECT DISTINCT (al.timestamp AT TIME ZONE 'Africa/Cairo')::DATE AS meeting_date
+    FROM public.attendance_logs al
+    WHERE al.log_type = 'servants_meeting'
+  ),
+  totals AS (
+    SELECT COUNT(*)::INTEGER AS total FROM meeting_dates
+  )
+  SELECT
+    u.id,
+    u.name,
+    u.role,
+    u.class_id,
+    u.qr_code,
+    totals.total AS total_meetings,
+    COUNT(DISTINCT md.meeting_date)::INTEGER AS attended_meetings,
+    CASE WHEN totals.total = 0 THEN 0
+    ELSE ROUND(100.0 * COUNT(DISTINCT md.meeting_date) / totals.total, 1)
+    END AS attendance_percent
+  FROM public.users u
+  CROSS JOIN totals
+  LEFT JOIN meeting_dates md
+    ON EXISTS (
+      SELECT 1 FROM public.attendance_logs al
+      WHERE al.user_id = u.id
+        AND al.log_type = 'servants_meeting'
+        AND (al.timestamp AT TIME ZONE 'Africa/Cairo')::DATE = md.meeting_date
+    )
+  WHERE u.role IN ('class_admin', 'assistant_admin', 'servant')
+  GROUP BY u.id, u.name, u.role, u.class_id, u.qr_code, totals.total
+  ORDER BY u.name;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_servant_meeting_attendance_log() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_servant_meeting_attendance_log() TO authenticated;
