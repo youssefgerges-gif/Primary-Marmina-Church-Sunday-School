@@ -562,31 +562,39 @@ export async function getClassAttendanceRanking(classId = 'grade-5', viewer = nu
     .sort((a, b) => b.attendance_percent - a.attendance_percent);
 }
 
+// طلب Mr. Gerges 2026-09-23: "ممكن تبقى الكوبونات بالسالب لو المخدوم معاه
+// 15 وأنا خصمت 20" — دلوقتي بتنادي add_manual_points() بدل ما تعمل INSERT
+// مباشر في points_ledger، عشان قاعدة البيانات نفسها ترفض أي خصم هيخلي
+// الرصيد بالسالب (وتفرض قفل الفصل كمان) — مش مجرد تعطيل زرار في الواجهة.
 export async function addManualPoints(studentId, amount, reason, servantId) {
   if (!reason || reason.trim() === '') {
     throw new Error('سبب إضافة/خصم النقاط مطلوب للأرشيف');
   }
 
   if (isSupabaseConfigured()) {
-    const { data, error } = await supabase
-      .from('points_ledger')
-      .insert([{
-        student_id: studentId,
-        amount: Number(amount),
-        reason: reason.trim(),
-        servant_id: servantId,
-        created_at: new Date().toISOString()
-      }])
-      .select();
-
-    if (error) throw error;
-    return data[0];
+    const { data, error } = await supabase.rpc('add_manual_points', {
+      p_student_id: studentId,
+      p_amount: Number(amount),
+      p_reason: reason.trim(),
+      p_servant_id: servantId || null
+    });
+    if (error) throw new Error(error.message || 'تعذر تسجيل النقاط');
+    return Array.isArray(data) ? data[0] : data;
   } else {
     const db = getMockData();
+    const numericAmount = Number(amount);
+    if (numericAmount < 0) {
+      const currentBalance = db.points_ledger
+        .filter(item => item.student_id === studentId)
+        .reduce((sum, item) => sum + Number(item.amount), 0);
+      if (currentBalance + numericAmount < 0) {
+        throw new Error(`مينفعش تخصم ${Math.abs(numericAmount)} نقطة — المخدوم معاه ${currentBalance} نقطة بس دلوقتي، والخصم ده هيخلي رصيده بالسالب`);
+      }
+    }
     const newEntry = {
       id: `pt-${Date.now()}`,
       student_id: studentId,
-      amount: Number(amount),
+      amount: numericAmount,
       reason: reason.trim(),
       servant_id: servantId || 'srv-501',
       created_at: new Date().toISOString()

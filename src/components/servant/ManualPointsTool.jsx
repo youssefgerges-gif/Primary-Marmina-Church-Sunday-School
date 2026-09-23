@@ -52,11 +52,22 @@ export default function ManualPointsTool() {
     s.name.includes(searchQuery) || (s.phone && s.phone.includes(searchQuery)) || s.qr_code.includes(searchQuery)
   );
 
+  // طلب Mr. Gerges 2026-09-23: "ممكن تبقى الكوبونات بالسالب لو المخدوم معاه
+  // 15 وأنا خصمت 20، بيبقى معاه -5 ودا غلط" — الرصيد أصلاً معروض فوق، فبنمنع
+  // إرسال خصم أكبر منه هنا كمان (تجربة استخدام أوضح، بدل ما ننتظر رد
+  // السيرفر)، لكن add_manual_points() في قاعدة البيانات هي اللي بترفض
+  // العملية فعليًا مهما حصل — مش مجرد تعطيل الزرار هنا.
+  const wouldGoNegative = mode === 'deduct' && amount > studentBalance;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedStudent) return;
     if (!amount || amount <= 0) {
       showToast('خطأ في البيانات', 'يرجى إدخال قيمة نقاط أكبر من صفر', 0, 'error');
+      return;
+    }
+    if (wouldGoNegative) {
+      showToast('خطأ في البيانات', `مينفعش تخصم ${amount} نقطة — المخدوم معاه ${studentBalance} نقطة بس، والخصم ده هيخلي رصيده بالسالب`, 0, 'error');
       return;
     }
 
@@ -230,12 +241,18 @@ export default function ManualPointsTool() {
               </button>
             ))}
           </div>
+
+          {wouldGoNegative && (
+            <p className="text-[11px] font-bold text-rose-600 mt-2">
+              مينفعش تخصم {amount} نقطة — المخدوم معاه {studentBalance} نقطة بس، ورصيده مينفعش يبقى بالسالب
+            </p>
+          )}
         </div>
 
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={loading || !selectedStudent}
+          disabled={loading || !selectedStudent || wouldGoNegative}
           className={`w-full py-3.5 rounded-2xl text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${
             mode === 'add'
               ? 'bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-700 hover:to-sky-700'

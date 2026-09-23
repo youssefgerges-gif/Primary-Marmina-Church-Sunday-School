@@ -626,6 +626,84 @@ REVOKE EXECUTE ON FUNCTION public.get_scoped_students() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_scoped_students() TO authenticated;
 
 -- ========================================================
+-- MANUAL POINTS — SCOPED + NEGATIVE-BALANCE GUARD
+-- طلب Mr. Gerges 2026-09-23: "ممكن تبقى الكوبونات بالسالب لو المخدوم معاه
+-- 15 وأنا خصمت 20، بيبقى معاه -5 ودا غلط". قبل كده addManualPoints() في
+-- supabase.js كانت بتعمل INSERT مباشر في points_ledger (عن طريق سياسة
+-- "Staff can add points" اللي بتفحص بس إن الدور مش 'student')، من غير أي
+-- تحقق من الرصيد الحالي قبل الخصم — فممكن رصيد المخدوم يعدي تحت الصفر.
+--
+-- الدالة دي بتفحص الرصيد الحالي (SUM كل صفوف points_ledger بتاعة المخدوم)
+-- قبل أي خصم (amount سالب)، وبترفض العملية (RAISE EXCEPTION) لو هتخلي
+-- الرصيد بالسالب — سيرفر سايد، مش مجرد تعطيل الزرار في الواجهة، فمينفعش
+-- تتجاوز بنداء مباشر لـAPI.
+--
+-- على نفس الطريق، سدّينا كمان ثغرة صلاحيات كانت موجودة من الأول: مفيش أي
+-- تحقق كان بيمنع خادم/أمين فصل من إضافة/خصم نقاط لمخدوم خارج فصله (الواجهة
+-- بس كانت بتخفي مخدومين الفصول التانية عن طريق get_scoped_students() فوق،
+-- بس نداء مباشر لـAPI كان يقدر يبعت أي student_id). الدالة دي بتفرض نفس
+-- قفل الفصل زي get_scoped_students()/add_scoped_student() — super_admin
+-- بس هو اللي يقدر يضيف/يخصم لأي مخدوم في أي فصل.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.add_manual_points(
+  p_student_id UUID,
+  p_amount NUMERIC,
+  p_reason TEXT,
+  p_servant_id TEXT DEFAULT NULL
+)
+RETURNS TABLE (id UUID, student_id UUID, amount NUMERIC, reason TEXT, servant_id TEXT, created_at TIMESTAMPTZ)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+  v_student public.users%ROWTYPE;
+  v_current_balance NUMERIC;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role = 'student' THEN
+    RAISE EXCEPTION 'غير مصرح لك بإضافة أو خصم نقاط';
+  END IF;
+
+  IF p_amount IS NULL OR p_amount = 0 THEN
+    RAISE EXCEPTION 'قيمة النقاط مطلوبة';
+  END IF;
+
+  IF p_reason IS NULL OR TRIM(p_reason) = '' THEN
+    RAISE EXCEPTION 'سبب إضافة/خصم النقاط مطلوب للأرشيف';
+  END IF;
+
+  SELECT * INTO v_student FROM public.users u WHERE u.id = p_student_id AND u.role = 'student';
+  IF v_student.id IS NULL THEN
+    RAISE EXCEPTION 'المخدوم غير موجود';
+  END IF;
+
+  IF v_role <> 'super_admin' THEN
+    v_class_id := public.current_user_class_id();
+    IF v_student.class_id <> v_class_id THEN
+      RAISE EXCEPTION 'غير مصرح لك بإضافة أو خصم نقاط لمخدوم خارج فصلك';
+    END IF;
+  END IF;
+
+  IF p_amount < 0 THEN
+    SELECT COALESCE(SUM(pl.amount), 0) INTO v_current_balance
+    FROM public.points_ledger pl WHERE pl.student_id = p_student_id;
+
+    IF v_current_balance + p_amount < 0 THEN
+      RAISE EXCEPTION 'مينفعش تخصم % نقطة — المخدوم معاه % نقطة بس دلوقتي، والخصم ده هيخلي رصيده بالسالب', ABS(p_amount), v_current_balance;
+    END IF;
+  END IF;
+
+  RETURN QUERY
+  INSERT INTO public.points_ledger (student_id, amount, reason, servant_id, created_at)
+  VALUES (p_student_id, p_amount, TRIM(p_reason), COALESCE(p_servant_id, 'system'), NOW())
+  RETURNING points_ledger.id, points_ledger.student_id, points_ledger.amount, points_ledger.reason, points_ledger.servant_id, points_ledger.created_at;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.add_manual_points(UUID, NUMERIC, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.add_manual_points(UUID, NUMERIC, TEXT, TEXT) TO authenticated;
+
+-- ========================================================
 -- MANUAL ATTENDANCE ROSTER (تسجيل الحضور يدويًا — القائمة بدون كاميرا)
 -- CLASS-SCOPED, AND (UNLIKE get_scoped_students() ABOVE) ROLE-DIFFERENTIATED:
 -- Used by QRScanner.jsx's manual/no-camera tab (used to record attendance by
