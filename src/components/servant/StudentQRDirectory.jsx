@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Search, Printer, Users } from 'lucide-react';
-import { getManualAttendanceRoster } from '../../services/supabase';
+import { QrCode, Search, Printer, Users, KeyRound } from 'lucide-react';
+import { getManualAttendanceRoster, resetLoginPassword } from '../../services/supabase';
 import { SAINT_IMAGES } from '../../services/saintImages';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
@@ -29,6 +29,7 @@ export default function StudentQRDirectory() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedQRUser, setSelectedQRUser] = useState(null);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +54,35 @@ export default function StudentQRDirectory() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+
+  // طلب 2026-09-23: نسيان كلمة السر — الخادم/أمين الفصل/المساعد يقدر يعيد
+  // تعيين كلمة سر أي مخدوم في فصله من هنا (نفس القفل الموجود أصلاً على
+  // الشاشة دي بالظبط — مقصور على فصله بس، متأكد منه سيرفر سايد جوه
+  // reset_login_password() في schema.sql، مش مجرد إخفاء زرار). بيمسح حساب
+  // الدخول بتاعه فيرجع لحالة "مفيهوش باسورد" تاني، وهو يعمل "أول مرة تدخل"
+  // بكلمة سر جديدة بنفس كود الدخول.
+  const handleResetPassword = async (student) => {
+    if (!student?.username || resetting) return;
+    if (!window.confirm(`هل أنت متأكد من إعادة تعيين كلمة سر "${student.name}"؟ هيحتاج يعمل "أول مرة تدخل" تاني بكلمة سر جديدة، بنفس كود الدخول (${student.username}).`)) {
+      return;
+    }
+    setResetting(true);
+    try {
+      const hadPassword = await resetLoginPassword(student.username);
+      showToast(
+        hadPassword ? 'تمت إعادة التعيين ✅' : 'مفيش تغيير',
+        hadPassword
+          ? `تم مسح كلمة سر "${student.name}" — يقدر يعمل "أول مرة تدخل" بكلمة سر جديدة بنفس الكود (${student.username})`
+          : `"${student.name}" أصلاً من غير كلمة سر — يقدر يعمل "أول مرة تدخل" على طول`,
+        0,
+        'success'
+      );
+    } catch (err) {
+      showToast('خطأ', err.message || 'تعذر إعادة تعيين كلمة السر', 0, 'error');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const filteredStudents = students.filter(s => {
     const q = searchQuery.trim().toLowerCase();
@@ -183,12 +213,23 @@ export default function StudentQRDirectory() {
               </div>
             </div>
 
-            <button
-              onClick={() => window.print()}
-              className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-2"
-            >
-              <Printer className="w-4 h-4" /> طباعة الكارت 🖨️
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-2"
+              >
+                <Printer className="w-4 h-4" /> طباعة الكارت 🖨️
+              </button>
+              {selectedQRUser.username && (
+                <button
+                  onClick={() => handleResetPassword(selectedQRUser)}
+                  disabled={resetting}
+                  className="flex-1 py-2.5 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 disabled:opacity-60 text-amber-700 dark:text-amber-300 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-amber-200 dark:border-amber-800"
+                >
+                  <KeyRound className="w-4 h-4" /> نسي الباسورد؟
+                </button>
+              )}
+            </div>
           </div>
         )}
       </Modal>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Users, Plus, QrCode, Phone, Search, Shield, User, Download, Printer, Edit2, Trash2, CheckCircle2, MessageCircle } from 'lucide-react';
-import { getUsers, saveUser, deleteUser, CLASSES, resetMockData } from '../../services/supabase';
+import { Users, Plus, QrCode, Phone, Search, Shield, User, Download, Printer, Edit2, Trash2, CheckCircle2, MessageCircle, KeyRound } from 'lucide-react';
+import { getUsers, saveUser, deleteUser, CLASSES, resetMockData, resetLoginPassword } from '../../services/supabase';
 import { SAINT_IMAGES } from '../../services/saintImages';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -179,6 +179,34 @@ export default function UserManagement() {
       } catch (err) {
         showToast('خطأ', err.message || 'فشل حذف الشخص', 0, 'error');
       }
+    }
+  };
+
+  // طلب 2026-09-23: نسيان كلمة السر — أمين الخدمة العامة يقدر يعيد تعيين
+  // كلمة سر أي حد من هنا. بيمسح حساب الدخول بتاعه (auth.users) فيرجع لحالة
+  // "مفيهوش باسورد" تاني، فيقدر يعمل "أول مرة تدخل" بكلمة سر جديدة يختارها
+  // بنفسه — نفس كود الدخول (username/qr_code) بالظبط، من غير أي تغيير في
+  // بياناته التانية. الصلاحية متأكد منها سيرفر سايد جوه reset_login_password().
+  const handleResetPassword = async (user) => {
+    if (!user.username) {
+      showToast('مفيش كود دخول', `"${user.name}" مالوش كود دخول مسجل أصلاً`, 0, 'error');
+      return;
+    }
+    if (!window.confirm(`هل أنت متأكد من إعادة تعيين كلمة سر "${user.name}"؟ هيحتاج يعمل "أول مرة تدخل" تاني بكلمة سر جديدة، بنفس كود الدخول (${user.username}).`)) {
+      return;
+    }
+    try {
+      const hadPassword = await resetLoginPassword(user.username);
+      showToast(
+        hadPassword ? 'تمت إعادة التعيين ✅' : 'مفيش تغيير',
+        hadPassword
+          ? `تم مسح كلمة سر "${user.name}" — يقدر يعمل "أول مرة تدخل" بكلمة سر جديدة بنفس الكود (${user.username})`
+          : `"${user.name}" أصلاً من غير كلمة سر — يقدر يعمل "أول مرة تدخل" على طول`,
+        0,
+        'success'
+      );
+    } catch (err) {
+      showToast('خطأ', err.message || 'تعذر إعادة تعيين كلمة السر', 0, 'error');
     }
   };
 
@@ -397,6 +425,13 @@ export default function UserManagement() {
                             <QrCode className="w-3.5 h-3.5" />
                           </button>
                           <button
+                            onClick={() => handleResetPassword(u)}
+                            className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-amber-200 dark:border-amber-800"
+                            title="إعادة تعيين كلمة السر"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             onClick={() => handleOpenEdit(u)}
                             className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-slate-200 dark:border-slate-700"
                             title="تعديل الدور أو البيانات"
@@ -465,6 +500,13 @@ export default function UserManagement() {
                       title="عرض كارت QR"
                     >
                       <QrCode className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleResetPassword(u)}
+                      className="flex-1 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 active:bg-amber-100 dark:active:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center border border-amber-200 dark:border-amber-800"
+                      title="إعادة تعيين كلمة السر"
+                    >
+                      <KeyRound className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleOpenEdit(u)}

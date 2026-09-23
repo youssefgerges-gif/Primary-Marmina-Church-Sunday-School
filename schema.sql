@@ -430,6 +430,72 @@ REVOKE EXECUTE ON FUNCTION public.claim_login_account(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.claim_login_account(TEXT) TO authenticated;
 
 -- ========================================================
+-- PASSWORD RECOVERY (نسيان كلمة السر) — STAFF-ASSISTED RESET
+-- طلب Mr. Gerges 2026-09-23: "لو حد نسي الباسورد بتاعه يبقي فيه طريقة
+-- للـRecovery أو التغيير". مفيش إيميلات حقيقية مسجلة لحد (usernameToEmail()
+-- في supabase.js بيولّد إيميل وهمي @sundayschool.local لكل شخص فقط عشان
+-- Supabase Auth محتاج شكل إيميل)، فرابط "استرجاع كلمة السر" الجاهز في
+-- Supabase (اللي بيبعت إيميل حقيقي) مش وارد يشتغل هنا. الحل: بدل ما نرجّع
+-- الباسورد القديم (مينفعش أصلاً — Supabase بيخزّنه مشفّر ومحدش يقدر يشوفه،
+-- حتى أمين الخدمة)، بنمسح حساب الدخول (auth.users) بتاع الكود ده، فيرجع
+-- لحالة "مفيهوش باسورد" تاني — بالظبط زي أول مرة، وصاحبه يقدر يعمل
+-- "أول مرة تدخل" من جديد بكلمة سر جديدة يختارها هو بنفسه. نفس بالظبط فكرة
+-- reset_test_login_accounts.sql (السكريبت الاختياري المُسلّم قبل كده)، بس
+-- هنا دالة دائمة تتنادى من الواجهة مباشرة بدل ما يشغّل SQL بإيده كل مرة.
+--
+-- الصلاحيات (نفس فلسفة كل دالة تانية هنا):
+--   - super_admin: يقدر يعيد تعيين كلمة سر أي حد (خادم أو مخدوم، أي فصل).
+--   - servant / class_admin / assistant_admin: مخدومين فصلهم بس — مش خدام
+--     تانيين ولا فصول تانية. القرار ده مقصود: ده تغيير حساس (بيقفل حساب
+--     حد تاني)، فمقصور على نفس نطاق الصلاحيات اللي عندهم أصلاً في كل حاجة
+--     تانية (إضافة مخدوم، تسجيل حضورهم، إلخ) — مش بيتوسع لحد تاني غير
+--     مخدومين فصلهم.
+--   - student / مش مسجل دخول: مرفوض تمامًا.
+--
+-- بيمسح مباشرة من auth.users (نفس الأسلوب المستخدم في
+-- reset_test_login_accounts.sql) — بما إن users.auth_user_id متعرّف بـ
+-- "ON DELETE SET NULL"، العمود ده بيرجع NULL تلقائيًا أول ما الحساب يتمسح،
+-- يعني find_login_account() هيرجّع has_password = false فورًا من غير أي
+-- خطوة تانية.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.reset_login_password(p_username TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+  v_target public.users%ROWTYPE;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role = 'student' THEN
+    RAISE EXCEPTION 'غير مصرح لك بإعادة تعيين كلمة السر';
+  END IF;
+
+  SELECT * INTO v_target FROM public.users u WHERE u.username = UPPER(TRIM(p_username));
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'الكود غير موجود';
+  END IF;
+
+  IF v_role <> 'super_admin' THEN
+    v_class_id := public.current_user_class_id();
+    IF v_target.role <> 'student' OR v_target.class_id <> v_class_id THEN
+      RAISE EXCEPTION 'غير مصرح لك بإعادة تعيين كلمة سر هذا الحساب';
+    END IF;
+  END IF;
+
+  IF v_target.auth_user_id IS NULL THEN
+    RETURN FALSE; -- أصلاً مفيهوش باسورد، مفيش حاجة تتمسح
+  END IF;
+
+  DELETE FROM auth.users WHERE id = v_target.auth_user_id;
+  RETURN TRUE;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.reset_login_password(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.reset_login_password(TEXT) TO authenticated;
+
+-- ========================================================
 -- ABSENCE REPORT (متابعة افتقاد الغائبين) — CLASS-SCOPED
 -- Whoever calls this only gets back the people they're actually allowed to
 -- manage absence for:

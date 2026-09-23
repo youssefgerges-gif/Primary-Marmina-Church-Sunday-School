@@ -1168,6 +1168,36 @@ export async function loginWithUsername(username, password) {
   if (error) throw new Error('كلمة السر غير صحيحة');
 }
 
+// طلب Mr. Gerges 2026-09-23: "لو حد نسي الباسورد بتاعه يبقي فيه طريقة
+// للـRecovery أو التغيير". مفيش إيميلات حقيقية مسجلة (usernameToEmail() فوق
+// بيولّد إيميل وهمي لكل حد فقط عشان Supabase Auth محتاج شكل إيميل)، فرابط
+// "استرجاع كلمة السر" الجاهز من Supabase (اللي بيبعت إيميل حقيقي) مش وارد
+// يشتغل هنا. بدل كده، خادم/أمين فصل/أمين خدمة يقدر يمسح حساب الدخول بتاع
+// أي حد مصرح له عليه — يرجع لحالة "مفيهوش باسورد" تاني، وصاحبه يعمل "أول
+// مرة تدخل" من جديد بكلمة سر جديدة يختارها بنفسه. الصلاحية نفسها متأكد
+// منها سيرفر سايد جوه reset_login_password() في schema.sql (مش مجرد إخفاء
+// زرار) — super_admin أي حد، وغيره مخدومين فصله بس.
+export async function resetLoginPassword(username) {
+  const clean = String(username || '').trim().toUpperCase();
+  if (!clean) {
+    throw new Error('كود الدخول مطلوب');
+  }
+
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('reset_login_password', { p_username: clean });
+    if (error) throw new Error(error.message || 'تعذر إعادة تعيين كلمة السر');
+    return !!data;
+  }
+
+  const db = getMockData();
+  const idx = db.users.findIndex(u => (u.username || '').toUpperCase() === clean);
+  if (idx === -1) throw new Error('الكود غير موجود');
+  const hadPassword = !!db.users[idx].auth_user_id;
+  db.users[idx] = { ...db.users[idx], auth_user_id: null };
+  saveMockData(db);
+  return hadPassword;
+}
+
 export async function logoutUser() {
   if (isSupabaseConfigured()) {
     const { error } = await supabase.auth.signOut();
