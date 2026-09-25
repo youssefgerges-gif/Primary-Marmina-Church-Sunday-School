@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Shield, User, UserPlus, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut, BarChart3, CreditCard } from 'lucide-react';
+import { Award, Shield, User, UserPlus, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut, BarChart3, CreditCard, UserCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import { getStudentBalance } from '../../services/supabase';
@@ -115,6 +115,16 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <QrCode className="w-4 h-4" /> تسجيل حضور
                 </button>
+                {/* طلب Mr. Gerges 2026-09-25: بياناتي — عرض/تعديل ذاتي للبيانات
+                    الأساسية، ولحساب التدريب فيها تبديل الدور كمان. */}
+                <button
+                  onClick={() => setActiveTab('my-profile')}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <UserCircle2 className="w-4 h-4 text-slate-500" /> بياناتي
+                </button>
               </>
             )}
 
@@ -169,6 +179,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <CreditCard className="w-4 h-4 text-indigo-600" /> أكواد QR المخدومين
                 </button>
+                <button
+                  onClick={() => setActiveTab('my-profile')}
+                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <UserCircle2 className="w-4 h-4 text-slate-500" /> بياناتي
+                </button>
               </>
             )}
 
@@ -190,6 +208,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   }`}
                 >
                   <CalendarCheck className="w-4 h-4 text-indigo-600" /> سجل الحضور والنقاط
+                </button>
+                <button
+                  onClick={() => setActiveTab('my-profile')}
+                  className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
+                    activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <UserCircle2 className="w-4 h-4 text-slate-500" /> بياناتي
                 </button>
               </>
             )}

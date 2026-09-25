@@ -33,8 +33,23 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS birth_date DATE;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS guardian_phone TEXT;
 
+-- طلب Mr. Gerges 2026-09-25: حساب تدريب خاص بيه — يقدر يبدّل دوره بنفسه (من
+-- دروب-داون: أمين خدمة / أمين فصل / أمين فصل مساعد / خادم / مخدوم) وقت ما
+-- بيشرح للخدام طريقة استخدام الموقع، من غير ما يلمس حسابه الحقيقي كأمين
+-- خدمة. is_training_account = true هو اللي بيفتح صلاحية switch_training_
+-- role() تحت — مفيش حساب تاني في النظام عنده الصلاحية دي، وده مش حاجة أي
+-- حد يقدر يفعّلها لنفسه من الموقع (لازم تتحط يدويًا في قاعدة البيانات بس).
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_training_account BOOLEAN NOT NULL DEFAULT false;
+
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_key ON public.users (username) WHERE username IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS users_auth_user_id_key ON public.users (auth_user_id) WHERE auth_user_id IS NOT NULL;
+
+-- حساب التدريب نفسه — يتزرع مرة واحدة بس (ON CONFLICT DO NOTHING يخلي إعادة
+-- تشغيل schema.sql آمنة زي أي حاجة تانية هنا)؛ يدخل عليه Mr. Gerges بكود
+-- الدخول TRAIN01 ويعمل "أول مرة تدخل" بباسورد يختاره بنفسه، زي أي حساب تاني.
+INSERT INTO public.users (name, role, qr_code, username, class_id, title, is_training_account)
+VALUES ('حساب تدريب الخدام', 'servant', 'QR-TRAIN-01', 'TRAIN01', 'grade-5', 'حساب تدريب — Mr. Gerges', true)
+ON CONFLICT (qr_code) DO NOTHING;
 
 -- Update role check constraint if table was created previously with old constraint
 ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
@@ -1186,3 +1201,95 @@ END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.get_servant_meeting_attendance_log() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_servant_meeting_attendance_log() TO authenticated;
+-- ========================================================
+-- UPDATE OWN PROFILE (بياناتي — تعديل ذاتي) — طلب Mr. Gerges 2026-09-25
+-- كل صاحب حساب (أي دور) يقدر يشوف بياناته ويعدّل رقم تليفونه بنفسه (وعنوانه
+-- ورقم ولي أمره لو مخدوم)، من غير ما يقدر يغيّر اسمه أو دوره أو فصله أو
+-- كوده — دول لسه حصريين لأمين الخدمة من شاشة "الخدام والمخدومين". سياسة
+-- "Super admin can update users" بترفض أي UPDATE من غير super_admin، فالدالة
+-- دي SECURITY DEFINER بتلف حواليها بس لصف صاحب الحساب نفسه، ونطاق ضيق جدًا
+-- من الأعمدة. باراميتر NULL معناه "متلمسش العمود ده"؛ نص فاضي معناه "امسحه".
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.update_own_profile(
+  p_phone TEXT DEFAULT NULL,
+  p_address TEXT DEFAULT NULL,
+  p_guardian_phone TEXT DEFAULT NULL
+)
+RETURNS public.users
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_id UUID;
+  v_row public.users%ROWTYPE;
+BEGIN
+  v_id := public.current_user_id();
+  IF v_id IS NULL THEN
+    RAISE EXCEPTION 'غير مسجل دخول';
+  END IF;
+
+  UPDATE public.users
+  SET
+    phone = CASE WHEN p_phone IS NOT NULL THEN NULLIF(TRIM(p_phone), '') ELSE phone END,
+    address = CASE WHEN p_address IS NOT NULL THEN NULLIF(TRIM(p_address), '') ELSE address END,
+    guardian_phone = CASE WHEN p_guardian_phone IS NOT NULL THEN NULLIF(TRIM(p_guardian_phone), '') ELSE guardian_phone END
+  WHERE id = v_id
+  RETURNING * INTO v_row;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'الحساب غير موجود';
+  END IF;
+
+  RETURN v_row;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT) TO authenticated;
+
+-- ========================================================
+-- SWITCH TRAINING ROLE (حساب التدريب — تبديل الدور بنفسه) — طلب Mr. Gerges
+-- 2026-09-25: عايز حساب واحد بس (حساب التدريب، شوف الزرع فوق عند أعمدة
+-- users) يقدر يغيّر دوره بنفسه من دروب-داون (أمين خدمة / أمين فصل / أمين
+-- فصل مساعد / خادم / مخدوم) عشان يستخدمه وهو بيشرح للخدام طريقة تشغيل
+-- الموقع. is_training_account لازم تكون true على صف صاحب الحساب — أي حساب
+-- تاني (حتى super_admin) هيترفض فورًا.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.switch_training_role(
+  p_role TEXT,
+  p_class_id TEXT DEFAULT NULL
+)
+RETURNS public.users
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_id UUID;
+  v_is_training BOOLEAN;
+  v_row public.users%ROWTYPE;
+BEGIN
+  v_id := public.current_user_id();
+  IF v_id IS NULL THEN
+    RAISE EXCEPTION 'غير مسجل دخول';
+  END IF;
+
+  SELECT is_training_account INTO v_is_training FROM public.users WHERE id = v_id;
+  IF NOT COALESCE(v_is_training, FALSE) THEN
+    RAISE EXCEPTION 'الحساب ده مش حساب تدريب — مينفعش تغيّر دورك';
+  END IF;
+
+  IF p_role NOT IN ('super_admin', 'class_admin', 'assistant_admin', 'servant', 'student') THEN
+    RAISE EXCEPTION 'دور غير صالح';
+  END IF;
+
+  IF p_role = 'super_admin' THEN
+    UPDATE public.users SET role = p_role, class_id = 'all' WHERE id = v_id RETURNING * INTO v_row;
+  ELSE
+    IF p_class_id IS NULL OR TRIM(p_class_id) = '' THEN
+      RAISE EXCEPTION 'اختار فصل';
+    END IF;
+    UPDATE public.users SET role = p_role, class_id = p_class_id WHERE id = v_id RETURNING * INTO v_row;
+  END IF;
+
+  RETURN v_row;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.switch_training_role(TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.switch_training_role(TEXT, TEXT) TO authenticated;

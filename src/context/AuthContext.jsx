@@ -79,6 +79,16 @@ export const AuthProvider = ({ children }) => {
     setSession(null);
   };
 
+  // طلب Mr. Gerges 2026-09-25: لازم بعد أي تعديل ذاتي على البيانات (بياناتي)
+  // أو تبديل دور حساب التدريب، currentUser يترجع يتقرا تاني من قاعدة
+  // البيانات — عشان الواجهة كلها (النافيجيشن، الصلاحيات) تتحدث فورًا من غير
+  // ما يحتاج المستخدم يعمل ريفريش أو يسجل خروج ودخول تاني.
+  const refreshProfile = async () => {
+    if (session?.user?.id) {
+      await loadProfileFor(session.user.id);
+    }
+  };
+
   // Kept only for picking between accounts of the SAME role (e.g. a family
   // with more than one child) — can never be used to switch into a
   // different, more privileged role.
@@ -97,7 +107,8 @@ export const AuthProvider = ({ children }) => {
         loading,
         logout,
         selectUser,
-        refreshUsers
+        refreshUsers,
+        refreshProfile
       }}
     >
       {children}

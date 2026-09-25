@@ -1283,3 +1283,54 @@ export async function getMyProfile(authUserId) {
   if (error) throw error;
   return data;
 }
+
+// طلب Mr. Gerges 2026-09-25: "بياناتي" — كل صاحب حساب يعدّل رقم تليفونه (وعنوانه
+// ورقم ولي أمره لو مخدوم) بنفسه. الحفظ الحقيقي والصلاحيات بيتم كله جوه
+// update_own_profile() في schema.sql (SECURITY DEFINER، بتلف بس لصف صاحب
+// الحساب نفسه) — الدالة دي هنا مجرد نداء عليها. userId مستخدم بس في وضع
+// mock/تجربة (لما مفيش Supabase حقيقي متوصل).
+export async function updateOwnProfile({ userId, phone, address, guardianPhone } = {}) {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('update_own_profile', {
+      p_phone: phone ?? null,
+      p_address: address ?? null,
+      p_guardian_phone: guardianPhone ?? null
+    });
+    if (error) throw new Error(error.message || 'تعذر حفظ البيانات');
+    return data;
+  }
+
+  const db = getMockData();
+  const idx = db.users.findIndex(u => u.id === userId);
+  if (idx === -1) throw new Error('الحساب غير موجود');
+  const updated = { ...db.users[idx] };
+  if (phone !== undefined && phone !== null) updated.phone = String(phone).trim() || null;
+  if (address !== undefined && address !== null) updated.address = String(address).trim() || null;
+  if (guardianPhone !== undefined && guardianPhone !== null) updated.guardian_phone = String(guardianPhone).trim() || null;
+  db.users[idx] = updated;
+  saveMockData(db);
+  return updated;
+}
+
+// طلب Mr. Gerges 2026-09-25: حساب التدريب (username: TRAIN01) بس هو اللي
+// يقدر يغيّر دوره بنفسه — لازم is_training_account = true على صفه، الصلاحية
+// نفسها متأكد منها سيرفر سايد جوه switch_training_role() في schema.sql (مش
+// مجرد إخفاء دروب-داون). userId مستخدم بس في وضع mock/تجربة.
+export async function switchTrainingRole({ userId, role, classId } = {}) {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('switch_training_role', {
+      p_role: role,
+      p_class_id: role === 'super_admin' ? 'all' : classId
+    });
+    if (error) throw new Error(error.message || 'تعذر تبديل الدور');
+    return data;
+  }
+
+  const db = getMockData();
+  const idx = db.users.findIndex(u => u.id === userId);
+  if (idx === -1) throw new Error('الحساب غير موجود');
+  if (!db.users[idx].is_training_account) throw new Error('الحساب ده مش حساب تدريب — مينفعش تغيّر دورك');
+  db.users[idx] = { ...db.users[idx], role, class_id: role === 'super_admin' ? 'all' : classId };
+  saveMockData(db);
+  return db.users[idx];
+}

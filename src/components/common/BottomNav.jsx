@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus, BarChart3, CreditCard } from 'lucide-react';
+import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus, BarChart3, CreditCard, UserCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function BottomNav({ activeTab, setActiveTab }) {
@@ -71,6 +71,16 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             >
               <CreditCard className="w-5 h-5 mb-0.5" />
               <span className="text-[10px] whitespace-nowrap">أكواد QR</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('my-profile')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'my-profile' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <UserCircle2 className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">بياناتي</span>
             </button>
           </>
         )}
@@ -155,6 +165,15 @@ export default function BottomNav({ activeTab, setActiveTab }) {
               <QrCode className="w-5 h-5 mb-0.5" />
               <span className="text-[10px] whitespace-nowrap">تسجيل حضور</span>
             </button>
+            <button
+              onClick={() => setActiveTab('my-profile')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'my-profile' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <UserCircle2 className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">بياناتي</span>
+            </button>
           </>
         )}
 
@@ -178,6 +197,15 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             >
               <CalendarCheck className="w-5 h-5 mb-0.5" />
               <span className="text-[11px] whitespace-nowrap">سجل الحضور والنقاط</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('my-profile')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-4 rounded-xl transition-all ${
+                activeTab === 'my-profile' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <UserCircle2 className="w-5 h-5 mb-0.5" />
+              <span className="text-[11px] whitespace-nowrap">بياناتي</span>
             </button>
           </>
         )}

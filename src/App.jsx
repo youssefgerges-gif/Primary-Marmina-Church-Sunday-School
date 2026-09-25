@@ -7,6 +7,7 @@ import Navbar from './components/common/Navbar';
 import BottomNav from './components/common/BottomNav';
 import Toast from './components/common/Toast';
 import Login from './components/auth/Login';
+import MyProfile from './components/common/MyProfile';
 
 // Scanner Component
 import QRScanner from './components/scanner/QRScanner';
@@ -37,12 +38,15 @@ import HistoryTimeline from './components/student/HistoryTimeline';
 // الخدام التلاتة برضو — شاشة جديدة، عرض بس، مقفولة على فصل كل واحد فيهم
 // (StudentQRDirectory.jsx). super_admin مش محتاجها هنا لأن عنده أصلاً شاشة
 // "الخدام والمخدومين" (UserManagement) اللي بتغطي ده وأكتر.
+// طلب Mr. Gerges 2026-09-25: "بياناتي" (MyProfile) متاحة لكل الأدوار من
+// غير استثناء — شاشة عرض/تعديل ذاتي للبيانات الأساسية، فاتضافت آخر كل
+// array تحت.
 const TABS_BY_ROLE = {
-  super_admin: ['admin-analytics', 'admin-efteqad', 'admin-users', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-attendance-log', 'scanner'],
-  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory'],
-  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory'],
-  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory'],
-  student: ['student-card', 'student-history']
+  super_admin: ['admin-analytics', 'admin-efteqad', 'admin-users', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-attendance-log', 'scanner', 'my-profile'],
+  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'my-profile'],
+  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'my-profile'],
+  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'my-profile'],
+  student: ['student-card', 'student-history', 'my-profile']
 };
 const DEFAULT_TAB_BY_ROLE = {
   super_admin: 'admin-analytics',
@@ -197,6 +201,10 @@ function MainContent() {
             {activeTab === 'student-history' && <HistoryTimeline />}
           </>
         )}
+
+        {/* طلب Mr. Gerges 2026-09-25: "بياناتي" — صالحة لأي دور، فمكتوبة مرة
+            واحدة هنا برا أي شرط على role. */}
+        {activeTab === 'my-profile' && <MyProfile />}
 
       </main>
 
