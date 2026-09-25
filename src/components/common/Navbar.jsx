@@ -31,25 +31,31 @@ export default function Navbar({ activeTab, setActiveTab }) {
         <div className="flex items-center justify-between h-16 gap-4">
           
           {/* Logo & Title */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <img src={logo} alt="شعار الكنيسة" className="w-10 h-10 rounded-full shadow-md object-cover shrink-0" />
-            <div>
-              <h1 className="font-extrabold text-slate-900 text-lg leading-tight">
+            <div className="hidden lg:block">
+              <h1 className="font-extrabold text-slate-900 text-lg leading-tight whitespace-nowrap">
                 خدمة مدارس الأحد
               </h1>
-              <p className="text-xs text-slate-500 font-medium">خدمة التربية الكنسية</p>
+              <p className="text-xs text-slate-500 font-medium whitespace-nowrap">خدمة التربية الكنسية</p>
             </div>
           </div>
 
-          {/* Desktop Navigation Links based on 5 Roles */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl border border-slate-200/80">
+          {/* Desktop Navigation Links based on 5 Roles — طلب Mr. Gerges
+              2026-09-25: بعد ما اتضاف زرار "بياناتي" لكل الأدوار (خصوصًا
+              أمين الخدمة العامة اللي بقى عنده 9 أزرار)، الصف بقى أعرض من
+              أي شاشة لابتوب عادية وبيكسر الشكل (الأزرار بتتلخبط/تتراكب).
+              نفس حل الـ overflow-x-auto اللي BottomNav بيستخدمه بالظبط —
+              الصف بيعمل سكرول أفقي بدل ما يتزنق، وكل زرار min-w-0 مبيحصلوش
+              (shrink-0) عشان النص فيه ميضغطش. */}
+          <nav className="hidden md:flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl border border-slate-200/80 overflow-x-auto no-scrollbar min-w-0">
             
             {/* 1. أمين الخدمة العامة (Super Admin) */}
             {role === 'super_admin' && (
               <>
                 <button
                   onClick={() => setActiveTab('admin-analytics')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'admin-analytics' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -57,7 +63,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('admin-efteqad')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'admin-efteqad' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -65,7 +71,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('admin-users')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'admin-users' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -73,7 +79,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('servant-leaderboard')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-leaderboard' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -81,7 +87,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('servant-manual-points')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-manual-points' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -89,7 +95,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('servant-add-student')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-add-student' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -101,7 +107,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                     attendance_log() في schema.sql. */}
                 <button
                   onClick={() => setActiveTab('servant-attendance-log')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-attendance-log' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -109,7 +115,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('scanner')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'scanner' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -119,7 +125,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                     الأساسية، ولحساب التدريب فيها تبديل الدور كمان. */}
                 <button
                   onClick={() => setActiveTab('my-profile')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -133,7 +139,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <>
                 <button
                   onClick={() => setActiveTab('scanner')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'scanner' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -141,7 +147,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('servant-leaderboard')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-leaderboard' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -149,7 +155,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('servant-manual-points')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-manual-points' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -163,7 +169,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                     وبقت حصرية لأمين الخدمة العامة بس — شوف قايمته هو فوق.) */}
                 <button
                   onClick={() => setActiveTab('servant-add-student')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-add-student' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -173,7 +179,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                     فصل صاحب الحساب سيرفر سايد. */}
                 <button
                   onClick={() => setActiveTab('servant-qr-directory')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'servant-qr-directory' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -181,7 +187,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('my-profile')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -195,7 +201,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <>
                 <button
                   onClick={() => setActiveTab('student-card')}
-                  className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
                     activeTab === 'student-card' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -203,7 +209,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('student-history')}
-                  className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
                     activeTab === 'student-history' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -211,7 +217,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
                 <button
                   onClick={() => setActiveTab('my-profile')}
-                  className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
+                  className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
                     activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -222,7 +228,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
           </nav>
 
           {/* Right Controls: Student Balance Badge, Logged-in Person Info & Logout */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
 
             {/* Live Student Points Counter */}
             {currentUser && currentUser.role === 'student' && (
