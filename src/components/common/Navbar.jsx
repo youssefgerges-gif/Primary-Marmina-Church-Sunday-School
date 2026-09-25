@@ -121,16 +121,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <QrCode className="w-4 h-4" /> تسجيل حضور
                 </button>
-                {/* طلب Mr. Gerges 2026-09-25: بياناتي — عرض/تعديل ذاتي للبيانات
-                    الأساسية، ولحساب التدريب فيها تبديل الدور كمان. */}
-                <button
-                  onClick={() => setActiveTab('my-profile')}
-                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-                    activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  }`}
-                >
-                  <UserCircle2 className="w-4 h-4 text-slate-500" /> بياناتي
-                </button>
               </>
             )}
 
@@ -185,14 +175,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <CreditCard className="w-4 h-4 text-indigo-600" /> أكواد QR المخدومين
                 </button>
-                <button
-                  onClick={() => setActiveTab('my-profile')}
-                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
-                    activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  }`}
-                >
-                  <UserCircle2 className="w-4 h-4 text-slate-500" /> بياناتي
-                </button>
               </>
             )}
 
@@ -215,14 +197,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 >
                   <CalendarCheck className="w-4 h-4 text-indigo-600" /> سجل الحضور والنقاط
                 </button>
-                <button
-                  onClick={() => setActiveTab('my-profile')}
-                  className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
-                    activeTab === 'my-profile' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  }`}
-                >
-                  <UserCircle2 className="w-4 h-4 text-slate-500" /> بياناتي
-                </button>
               </>
             )}
           </nav>
@@ -237,6 +211,27 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 <span>{studentPoints}</span>
                 <span className="opacity-90 font-normal">نقطة</span>
               </div>
+            )}
+
+            {/* طلب Mr. Gerges 2026-09-25 (تصحيح): "بياناتي" كانت جوه صف
+                القايمة اللي بقى بيعمل سكرول أفقي — بمعنى إنها كانت بتختفي
+                من غير أي إشارة إن فيه سكرول أصلاً (فمبينش حتى إنها موجودة).
+                نقلتها هنا برا الصف، بجوار كارت "مين الداخل"، عشان تبقى
+                ظاهرة على طول لأي دور، أيًا كان عرض الشاشة أو عدد أزرار
+                القايمة. */}
+            {currentUser && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('my-profile')}
+                title="بياناتي"
+                className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors border ${
+                  activeTab === 'my-profile'
+                    ? 'bg-sky-600 border-sky-600 text-white shadow-sm'
+                    : 'bg-slate-100/80 border-slate-200 text-slate-600 hover:bg-slate-200/60'
+                }`}
+              >
+                <UserCircle2 className="w-4.5 h-4.5" />
+              </button>
             )}
 
             {/* Logged-in identity + logout */}
