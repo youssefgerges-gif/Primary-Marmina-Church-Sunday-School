@@ -16,6 +16,12 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  // طلب Mr. Gerges 2026-09-25: قبل كده الطباعة كانت بتطبع كل اللي ظاهر في
+  // القايمة حسب فلتر الدور بس (كل الخدام / المخدومين / ...) من غير أي
+  // تحكم في المرحلة (الفصل) — فكان لازم يطبع كل الفصول مع بعض. دلوقتي
+  // فيه فلتر مرحلة كمان (classFilter) بيشتغل مع فلتر الدور مع بعض، عشان
+  // يقدر يطبع مثلاً "خدام فصل تانية ابتدائي" بس، أو "مخدومين الحضانة" بس.
+  const [classFilter, setClassFilter] = useState('all');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -116,8 +122,10 @@ export default function UserManagement() {
     else if (roleFilter === 'servants_group') matchesRole = u.role !== 'student';
     else if (roleFilter === 'super_admin') matchesRole = u.role === 'super_admin';
     else if (roleFilter === 'class_admin') matchesRole = u.role === 'class_admin' || u.role === 'assistant_admin';
-    
-    return matchesSearch && matchesRole;
+
+    const matchesClass = classFilter === 'all' || u.class_id === classFilter;
+
+    return matchesSearch && matchesRole && matchesClass;
   });
 
   const handleResetData = async () => {
@@ -348,11 +356,25 @@ export default function UserManagement() {
               المخدومين ({users.filter(u => u.role === 'student').length})
             </button>
 
+            {/* طلب Mr. Gerges 2026-09-25: فلتر المرحلة — بيشتغل مع فلتر
+                الدور فوق مع بعض، وهو اللي بيتحكم بالظبط مين هيتطبع لما
+                تدوس "طباعة الكارنيهات" تحت (نفس filteredUsers). */}
+            <select
+              value={classFilter}
+              onChange={(e) => setClassFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-sky-500 outline-none"
+            >
+              <option value="all">كل المراحل</option>
+              {CLASSES.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+
             <button
               onClick={() => setIsPrintingBatch(true)}
               disabled={filteredUsers.length === 0}
               className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center gap-1.5 transition-all shrink-0"
-              title="يطبع كارنيه لكل شخص ظاهر في القايمة الحالية حسب الفلتر فوق — اختر «كافة الخدام» أو «المخدومين» أو أي فلتر تاني الأول"
+              title="يطبع كارنيه لكل شخص ظاهر في القايمة الحالية حسب فلتر الدور والمرحلة فوق — اختر «كافة الخدام» أو «المخدومين»، وحدد المرحلة لو محتاج، قبل ما تدوس"
             >
               <Printer className="w-3.5 h-3.5" /> طباعة الكارنيهات (PDF) — {filteredUsers.length}
             </button>
