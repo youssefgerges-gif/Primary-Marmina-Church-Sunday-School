@@ -162,7 +162,7 @@ export default function AddStudentTool() {
               المخدومين"، وهيبان على اسم المخدوم علامة "بيانات ناقصة" لحد
               ما تكملهم. */}
           <div>
-            <label className="block text-xs font-extrabold text-slate-900 mb-2">تاريخ الميلاد — اختياري</label>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">تاريخ الميلاد</label>
             <input
               type="date"
               value={birthDate}
@@ -172,7 +172,7 @@ export default function AddStudentTool() {
           </div>
 
           <div>
-            <label className="block text-xs font-extrabold text-slate-900 mb-2">العنوان — اختياري</label>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">العنوان</label>
             <input
               type="text"
               placeholder="مثال: شارع الجمهورية، أسوان"
@@ -183,7 +183,7 @@ export default function AddStudentTool() {
           </div>
 
           <div>
-            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم ولي الأمر — اختياري</label>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم ولي الأمر</label>
             <input
               type="tel"
               placeholder="01234567890"
@@ -194,7 +194,7 @@ export default function AddStudentTool() {
           </div>
 
           <div>
-            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم هاتف المخدوم (واتساب) — اختياري</label>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم هاتف المخدوم (واتساب)</label>
             <input
               type="tel"
               placeholder="01234567890"
