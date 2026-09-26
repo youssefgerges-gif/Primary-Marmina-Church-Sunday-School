@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode, Search, Printer, Users, KeyRound } from 'lucide-react';
-import { getManualAttendanceRoster, resetLoginPassword } from '../../services/supabase';
+import { QrCode, Search, Printer, Users, KeyRound, AlertTriangle, Save, Loader2, PenLine } from 'lucide-react';
+import { getManualAttendanceRoster, resetLoginPassword, updateScopedStudent } from '../../services/supabase';
 import { SAINT_IMAGES } from '../../services/saintImages';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import Modal from '../common/Modal';
 import eparchyLogo from '../../assets/eparchy-logo.png';
+
+// طلب Mr. Gerges 2026-09-27: تاريخ الميلاد/العنوان/رقم ولي الأمر بقوا
+// اختياريين وقت تسجيل مخدوم جديد (AddStudentTool.jsx) — فمخدوم ناقصه أي
+// واحد منهم بيبان عليه هنا علامة "بيانات ناقصة" عشان محدش ينسى يكملها.
+const hasMissingData = (s) => !s.birth_date || !s.address || !s.guardian_phone;
 
 // طلب 2026-09-20: كل الخدام (خادم عادي / أمين فصل / أمين فصل مساعد) بقى
 // يقدروا يشوفوا كود QR وكود الدخول بتاع مخدومين فصلهم بس — قبل كده الشاشة
@@ -30,6 +35,13 @@ export default function StudentQRDirectory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedQRUser, setSelectedQRUser] = useState(null);
   const [resetting, setResetting] = useState(false);
+
+  // طلب Mr. Gerges 2026-09-27: تعديل بيانات المخدوم (تليفون/تاريخ ميلاد/
+  // عنوان/رقم ولي أمر) بقى متاح من هنا مباشرة — نفس الكارت اللي بيفتح كارت
+  // الـQR، فورم التعديل جواه. مقفول سيرفر سايد جوه update_scoped_student()
+  // في schema.sql (مش بس هنا) على فصل صاحب الحساب.
+  const [editForm, setEditForm] = useState(null); // { phone, birthDate, address, guardianPhone }
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +96,48 @@ export default function StudentQRDirectory() {
     }
   };
 
+  // كل ما تفتح كارت مخدوم تاني، الفورم بيتعبّى ببياناته هو (مش فاضل من
+  // اللي قبله)، وبيتقفل لما تقفل الكارت.
+  useEffect(() => {
+    if (selectedQRUser) {
+      setEditForm({
+        phone: selectedQRUser.phone || '',
+        birthDate: selectedQRUser.birth_date || '',
+        address: selectedQRUser.address || '',
+        guardianPhone: selectedQRUser.guardian_phone || ''
+      });
+    } else {
+      setEditForm(null);
+    }
+  }, [selectedQRUser]);
+
+  const handleSaveEdit = async () => {
+    if (!selectedQRUser || !editForm || savingEdit) return;
+    setSavingEdit(true);
+    try {
+      const updated = await updateScopedStudent(
+        {
+          studentId: selectedQRUser.id,
+          phone: editForm.phone,
+          birthDate: editForm.birthDate || null,
+          clearBirthDate: !editForm.birthDate,
+          address: editForm.address,
+          guardianPhone: editForm.guardianPhone
+        },
+        currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null
+      );
+      // نحدّث القائمتين (الكارت المفتوح + القائمة تحت) بالبيانات الجديدة من
+      // غير ما نحتاج نعيد تحميل الكشف كله من قاعدة البيانات تاني.
+      setStudents(prev => prev.map(s => (s.id === selectedQRUser.id ? { ...s, ...updated } : s)));
+      setSelectedQRUser(prev => (prev ? { ...prev, ...updated } : prev));
+      showToast('تم الحفظ ✏️', `اتحدثت بيانات "${selectedQRUser.name}"`, 0, 'success');
+    } catch (err) {
+      showToast('تعذر الحفظ', err.message || 'حدث خطأ، حاول تاني', 0, 'error');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const filteredStudents = students.filter(s => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return true;
@@ -105,7 +159,7 @@ export default function StudentQRDirectory() {
           </span>
           <h2 className="text-xl sm:text-2xl font-black">أكواد QR وكروت الدخول لمخدومين فصلك</h2>
           <p className="text-sky-100 text-xs mt-1">
-            اعرض كود QR أو كود الدخول لأي مخدوم في فصلك، أو اطبع كارته من هنا مباشرة
+            اعرض كود QR أو كود الدخول لأي مخدوم في فصلك، اطبع كارته، أو كمّل/عدّل بياناته من هنا مباشرة
           </p>
         </div>
         <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-amber-300 shrink-0 shadow-inner self-start sm:self-auto">
@@ -146,7 +200,17 @@ export default function StudentQRDirectory() {
                   {student.name?.[0]}
                 </div>
                 <div className="min-w-0">
-                  <span className="block text-xs font-bold text-slate-900 truncate">{student.name}</span>
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900 truncate">
+                    {student.name}
+                    {hasMissingData(student) && (
+                      <span
+                        title="بيانات ناقصة — دوس للتكملة"
+                        className="shrink-0 inline-flex items-center gap-0.5 bg-amber-100 text-amber-700 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-200"
+                      >
+                        <AlertTriangle className="w-2.5 h-2.5" /> بيانات ناقصة
+                      </span>
+                    )}
+                  </span>
                   {student.username && (
                     <span className="block text-[10px] text-sky-700 font-mono font-bold">{student.username}</span>
                   )}
@@ -230,6 +294,71 @@ export default function StudentQRDirectory() {
                 </button>
               )}
             </div>
+
+            {/* طلب Mr. Gerges 2026-09-27: تعديل/تكملة بيانات المخدوم — تليفون،
+                تاريخ ميلاد، عنوان، رقم ولي أمر. مقفول سيرفر سايد على فصل
+                صاحب الحساب جوه update_scoped_student() في schema.sql. */}
+            {editForm && (
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-3 text-right">
+                <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <PenLine className="w-3.5 h-3.5 text-sky-600" /> تعديل بيانات المخدوم
+                  {hasMissingData(selectedQRUser) && (
+                    <span className="text-[9px] font-black text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                      بيانات ناقصة
+                    </span>
+                  )}
+                </h4>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">رقم تليفون المخدوم</label>
+                  <input
+                    type="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="01xxxxxxxxx"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:ring-2 focus:ring-sky-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">تاريخ الميلاد</label>
+                  <input
+                    type="date"
+                    value={editForm.birthDate}
+                    onChange={(e) => setEditForm(f => ({ ...f, birthDate: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:ring-2 focus:ring-sky-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">العنوان</label>
+                  <input
+                    type="text"
+                    value={editForm.address}
+                    onChange={(e) => setEditForm(f => ({ ...f, address: e.target.value }))}
+                    placeholder="مثال: شارع الجمهورية، أسوان"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:ring-2 focus:ring-sky-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">رقم ولي الأمر</label>
+                  <input
+                    type="tel"
+                    value={editForm.guardianPhone}
+                    onChange={(e) => setEditForm(f => ({ ...f, guardianPhone: e.target.value }))}
+                    placeholder="01xxxxxxxxx"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:ring-2 focus:ring-sky-500 outline-none"
+                  />
+                </div>
+
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit}
+                  className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2"
+                >
+                  {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  حفظ التعديلات
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

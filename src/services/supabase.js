@@ -769,8 +769,10 @@ export async function getManualAttendanceRoster(viewer = null) {
 // real server-side login there.
 //
 // طلب 2026-09-20 (نسخة ثانية، نفس اليوم): birth_date/address/guardianPhone
-// بقوا إلزاميين (نفس الإلزام مطبّق سيرفر سايد جوه add_scoped_student() في
-// schema.sql، مش بس هنا) — phone فضل اختياري زي ما كان.
+// كانوا إلزاميين وقتها. طلب Mr. Gerges 2026-09-27: بقوا اختياريين تاني —
+// مش كل خادم عنده كل البيانات دي وقت التسجيل، وممكن يكملها بعدين من شاشة
+// "أكواد QR المخدومين" (updateScopedStudent() تحت). phone فضل اختياري
+// زي ما كان دايمًا.
 export async function addScopedStudent({ name, phone, birthDate, address, guardianPhone, class_id } = {}, viewer = null) {
   const cleanName = (name || '').trim();
   if (!cleanName) {
@@ -780,22 +782,13 @@ export async function addScopedStudent({ name, phone, birthDate, address, guardi
   const cleanBirthDate = (birthDate || '').trim();
   const cleanAddress = (address || '').trim();
   const cleanGuardianPhone = (guardianPhone || '').trim();
-  if (!cleanBirthDate) {
-    throw new Error('تاريخ ميلاد المخدوم مطلوب');
-  }
-  if (!cleanAddress) {
-    throw new Error('عنوان المخدوم مطلوب');
-  }
-  if (!cleanGuardianPhone) {
-    throw new Error('رقم ولي الأمر مطلوب');
-  }
 
   if (isSupabaseConfigured()) {
     const params = {
       p_name: cleanName,
-      p_birth_date: cleanBirthDate,
-      p_address: cleanAddress,
-      p_guardian_phone: cleanGuardianPhone,
+      p_birth_date: cleanBirthDate || null,
+      p_address: cleanAddress || null,
+      p_guardian_phone: cleanGuardianPhone || null,
       p_phone: cleanPhone || null
     };
     if (viewer && viewer.role === 'super_admin') {
@@ -817,9 +810,9 @@ export async function addScopedStudent({ name, phone, birthDate, address, guardi
     name: cleanName,
     role: 'student',
     phone: cleanPhone || null,
-    birth_date: cleanBirthDate,
-    address: cleanAddress,
-    guardian_phone: cleanGuardianPhone,
+    birth_date: cleanBirthDate || null,
+    address: cleanAddress || null,
+    guardian_phone: cleanGuardianPhone || null,
     class_id: resolvedClassId,
     title: 'مخدوم',
     qr_code: qrCode,
@@ -829,6 +822,46 @@ export async function addScopedStudent({ name, phone, birthDate, address, guardi
   db.users.push(newStudent);
   saveMockData(db);
   return newStudent;
+}
+
+// طلب Mr. Gerges 2026-09-27: تكملة/تعديل بيانات مخدوم موجود (تليفون/تاريخ
+// ميلاد/عنوان/رقم ولي أمر) — متاحة لخادم/أمين فصل/أمين فصل مساعد لمخدومين
+// فصلهم بس، ولأمين الخدمة العامة لأي مخدوم. نفس نمط update_own_profile():
+// باراميتر undefined/null معناه "متلمسش العمود ده"، نص فاضي معناه "امسحه".
+// تاريخ الميلاد بالذات نوعه DATE مش TEXT، فمفيش "نص فاضي" نقدر نبعته لمسحه
+// — clearBirthDate صراحةً هي اللي بتمسحه (شوف update_scoped_student() في
+// schema.sql).
+export async function updateScopedStudent({ studentId, phone, birthDate, clearBirthDate, address, guardianPhone } = {}, viewer = null) {
+  if (!studentId) throw new Error('المخدوم غير محدد');
+
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('update_scoped_student', {
+      p_student_id: studentId,
+      p_phone: phone ?? null,
+      p_birth_date: birthDate || null,
+      p_clear_birth_date: !!clearBirthDate,
+      p_address: address ?? null,
+      p_guardian_phone: guardianPhone ?? null
+    });
+    if (error) throw new Error(error.message || 'تعذر حفظ بيانات المخدوم');
+    return data;
+  }
+
+  const db = getMockData();
+  const idx = db.users.findIndex(u => u.id === studentId && u.role === 'student');
+  if (idx === -1) throw new Error('المخدوم غير موجود');
+  if (viewer && viewer.role !== 'super_admin' && db.users[idx].class_id !== viewer.class_id) {
+    throw new Error('غير مصرح لك — المخدوم ده مش في فصلك');
+  }
+  const updated = { ...db.users[idx] };
+  if (phone !== undefined && phone !== null) updated.phone = String(phone).trim() || null;
+  if (clearBirthDate) updated.birth_date = null;
+  else if (birthDate) updated.birth_date = birthDate;
+  if (address !== undefined && address !== null) updated.address = String(address).trim() || null;
+  if (guardianPhone !== undefined && guardianPhone !== null) updated.guardian_phone = String(guardianPhone).trim() || null;
+  db.users[idx] = updated;
+  saveMockData(db);
+  return updated;
 }
 
 // Real dashboard stats: total points ever awarded, and the % of students

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Users, Plus, QrCode, Phone, Search, Shield, User, Download, Printer, Edit2, Trash2, CheckCircle2, MessageCircle, KeyRound } from 'lucide-react';
+import { Users, Plus, QrCode, Phone, Search, Shield, User, Download, Printer, Edit2, Trash2, CheckCircle2, MessageCircle, KeyRound, AlertTriangle } from 'lucide-react';
 import { getUsers, saveUser, deleteUser, CLASSES, resetMockData, resetLoginPassword } from '../../services/supabase';
 import { SAINT_IMAGES } from '../../services/saintImages';
 import { usePoints } from '../../context/PointsContext';
@@ -8,6 +8,12 @@ import { useAuth } from '../../context/AuthContext';
 import Modal from '../common/Modal';
 import WhatsAppModal from '../common/WhatsAppModal';
 import eparchyLogo from '../../assets/eparchy-logo.png';
+
+// طلب Mr. Gerges 2026-09-27: تاريخ الميلاد/العنوان/رقم ولي الأمر بقوا
+// اختياريين وقت تسجيل مخدوم جديد (AddStudentTool.jsx) — فمخدوم ناقصه أي
+// واحد منهم بيبان عليه هنا علامة "بيانات ناقصة" (الخدام أنفسهم لا ينطبق
+// عليهم هذا الشرط أصلاً، مفيش عندهم الحقول دي).
+const hasMissingData = (u) => u.role === 'student' && (!u.birth_date || !u.address || !u.guardian_phone);
 
 export default function UserManagement() {
   const { showToast, triggerRefresh, refreshKey } = usePoints();
@@ -415,7 +421,17 @@ export default function UserManagement() {
                           {u.name[0]}
                         </div>
                         <div>
-                          <span className="block font-bold">{u.name}</span>
+                          <span className="flex items-center gap-1.5 font-bold">
+                            {u.name}
+                            {hasMissingData(u) && (
+                              <span
+                                title="بيانات ناقصة"
+                                className="shrink-0 inline-flex items-center gap-0.5 bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800"
+                              >
+                                <AlertTriangle className="w-2.5 h-2.5" /> بيانات ناقصة
+                              </span>
+                            )}
+                          </span>
                           {u.title && <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block">{u.title}</span>}
                         </div>
                       </td>
@@ -487,7 +503,17 @@ export default function UserManagement() {
                       {u.name[0]}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{u.name}</p>
+                      <p className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white text-sm truncate">
+                        {u.name}
+                        {hasMissingData(u) && (
+                          <span
+                            title="بيانات ناقصة"
+                            className="shrink-0 inline-flex items-center gap-0.5 bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 text-[9px] font-black px-1.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> ناقصة
+                          </span>
+                        )}
+                      </p>
                       {u.title && <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{u.title}</p>}
                     </div>
                     <div className="shrink-0">{getRoleBadge(u)}</div>

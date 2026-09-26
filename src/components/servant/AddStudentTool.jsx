@@ -27,25 +27,14 @@ export default function AddStudentTool() {
   const [addedStudent, setAddedStudent] = useState(null);
 
   // طلب 2026-09-20 (نسخة ثانية، نفس اليوم): تاريخ الميلاد + العنوان + رقم
-  // ولي الأمر بقوا مطلوبين لأي مخدوم جديد (رقم المخدوم نفسه فضل اختياري) —
-  // نفس الإلزام متفحوص تاني سيرفر سايد جوه add_scoped_student() في
-  // schema.sql، مش بس هنا.
+  // ولي الأمر كانوا مطلوبين لأي مخدوم جديد. طلب Mr. Gerges 2026-09-27:
+  // بقوا اختياريين تاني — ممكن الخادم يسجل المخدوم بالاسم بس وقت الحاجة،
+  // ويكمل الباقي بعدين من شاشة "أكواد QR المخدومين" (بيبان عليه علامة
+  // "بيانات ناقصة" لحد ما يكملها). رقم المخدوم نفسه فضل اختياري زي ما كان.
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
       showToast('خطأ في البيانات', 'يرجى إدخال اسم المخدوم', 0, 'error');
-      return;
-    }
-    if (!birthDate) {
-      showToast('خطأ في البيانات', 'يرجى إدخال تاريخ ميلاد المخدوم', 0, 'error');
-      return;
-    }
-    if (!address.trim()) {
-      showToast('خطأ في البيانات', 'يرجى إدخال عنوان المخدوم', 0, 'error');
-      return;
-    }
-    if (!guardianPhone.trim()) {
-      showToast('خطأ في البيانات', 'يرجى إدخال رقم ولي الأمر', 0, 'error');
       return;
     }
     if (isSuperAdmin && !classId) {
@@ -168,11 +157,14 @@ export default function AddStudentTool() {
             </div>
           )}
 
+          {/* طلب Mr. Gerges 2026-09-27: التلاتة حقول دول بقوا اختياريين —
+              لو سبتهم فاضيين، تقدر تكملهم بعدين من شاشة "أكواد QR
+              المخدومين"، وهيبان على اسم المخدوم علامة "بيانات ناقصة" لحد
+              ما تكملهم. */}
           <div>
-            <label className="block text-xs font-extrabold text-slate-900 mb-2">تاريخ الميلاد</label>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">تاريخ الميلاد — اختياري</label>
             <input
               type="date"
-              required
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
               className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
@@ -180,10 +172,9 @@ export default function AddStudentTool() {
           </div>
 
           <div>
-            <label className="block text-xs font-extrabold text-slate-900 mb-2">العنوان</label>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">العنوان — اختياري</label>
             <input
               type="text"
-              required
               placeholder="مثال: شارع الجمهورية، أسوان"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
@@ -192,10 +183,9 @@ export default function AddStudentTool() {
           </div>
 
           <div>
-            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم ولي الأمر</label>
+            <label className="block text-xs font-extrabold text-slate-900 mb-2">رقم ولي الأمر — اختياري</label>
             <input
               type="tel"
-              required
               placeholder="01234567890"
               value={guardianPhone}
               onChange={(e) => setGuardianPhone(e.target.value)}

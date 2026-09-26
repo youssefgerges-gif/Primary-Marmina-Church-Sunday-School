@@ -767,6 +767,12 @@ GRANT EXECUTE ON FUNCTION public.add_manual_points(UUID, NUMERIC, TEXT, TEXT) TO
 -- ملحوظة: Postgres بيرفض CREATE OR REPLACE لو شكل الأعمدة الراجعة
 -- (OUT parameters / RETURNS TABLE) اتغيّر، حتى لو الباراميترز الداخلة زي
 -- ما هي — لازم DROP صريح قبلها أول ما تتغيّر أعمدة الإرجاع.
+-- طلب Mr. Gerges 2026-09-27: أضفنا phone/birth_date/address/guardian_phone
+-- لعمود الـSELECT — عشان شاشة "أكواد QR المخدومين" (StudentQRDirectory.jsx)
+-- تقدر (أ) توري علامة "بيانات ناقصة" على أي مخدوم فيها حقل فاضي، و(ب) تفتح
+-- فورم تعديل من غير ما تحتاج نداء تاني لقاعدة البيانات. مفيش أي تغيير في
+-- شرط الصلاحيات نفسه (مين يشوف مين)، فالاستخدام القديم في QRScanner.jsx
+-- مش متأثر خالص.
 DROP FUNCTION IF EXISTS public.get_manual_attendance_roster();
 
 CREATE OR REPLACE FUNCTION public.get_manual_attendance_roster()
@@ -776,7 +782,11 @@ RETURNS TABLE (
   role TEXT,
   qr_code TEXT,
   username TEXT,
-  class_id TEXT
+  class_id TEXT,
+  phone TEXT,
+  birth_date DATE,
+  address TEXT,
+  guardian_phone TEXT
 )
 LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
 DECLARE
@@ -793,7 +803,7 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT u.id, u.name, u.role, u.qr_code, u.username, u.class_id
+  SELECT u.id, u.name, u.role, u.qr_code, u.username, u.class_id, u.phone, u.birth_date, u.address, u.guardian_phone
   FROM public.users u
   WHERE (
       v_role = 'super_admin' AND u.role <> 'super_admin'
@@ -833,22 +843,27 @@ GRANT EXECUTE ON FUNCTION public.get_manual_attendance_roster() TO authenticated
 -- student immediately has a working QR card and login code, exactly like
 -- one added through super_admin's full "إدارة المستخدمين" screen.
 --
--- طلب 2026-09-20 (نسخة ثانية، نفس اليوم): بيانات إضافية إلزامية لكل مخدوم
--- جديد — تاريخ الميلاد (p_birth_date)، العنوان (p_address)، ورقم ولي الأمر
+-- طلب 2026-09-20 (نسخة ثانية، نفس اليوم): بيانات إضافية لكل مخدوم جديد —
+-- تاريخ الميلاد (p_birth_date)، العنوان (p_address)، ورقم ولي الأمر
 -- (p_guardian_phone) — رقم المخدوم نفسه (p_phone) فضل اختياري زي ما كان.
--- الإلزام بيتفحص هنا سيرفر سايد (RAISE EXCEPTION)، مش بس في الفورم، عشان
--- محدش يقدر يتجاوزه بنداء مباشر لـRPC. التوقيع (signature) اتغيّر (باراميترز
--- جداد) فبقى لازم DROP صريح للنسخة القديمة (TEXT, TEXT, TEXT) — Postgres
--- بيتعامل مع توقيع مختلف كـoverload تاني تمامًا، مش استبدال، فCREATE OR
--- REPLACE وحده كان هيسيب النسخة القديمة موجودة جنب الجديدة.
+--
+-- طلب Mr. Gerges 2026-09-27 (تراجع جزئي): التلاتة دول بقوا اختياريين
+-- برضو — مش كل خادم عنده كل البيانات دي وقت التسجيل، وبقى ممكن يكملها
+-- بعدين من شاشة "أكواد QR المخدومين" (StudentQRDirectory.jsx، عن طريق
+-- update_scoped_student() تحت). أي مخدوم فيه حقل فاضي من التلاتة دول بيبان
+-- عليه علامة "بيانات ناقصة" في كل شاشة بتعرض الكشوفات، فمحدش ينسى يكملها.
+-- التوقيع (signature) اتغيّر قبل كده (باراميترز جداد) فبقى لازم DROP صريح
+-- للنسخة القديمة (TEXT, TEXT, TEXT) — Postgres بيتعامل مع توقيع مختلف
+-- كـoverload تاني تمامًا، مش استبدال، فCREATE OR REPLACE وحده كان هيسيب
+-- النسخة القديمة موجودة جنب الجديدة.
 -- ========================================================
 DROP FUNCTION IF EXISTS public.add_scoped_student(TEXT, TEXT, TEXT);
 
 CREATE OR REPLACE FUNCTION public.add_scoped_student(
   p_name TEXT,
-  p_birth_date DATE,
-  p_address TEXT,
-  p_guardian_phone TEXT,
+  p_birth_date DATE DEFAULT NULL,
+  p_address TEXT DEFAULT NULL,
+  p_guardian_phone TEXT DEFAULT NULL,
   p_phone TEXT DEFAULT NULL,
   p_class_id TEXT DEFAULT NULL
 )
@@ -876,18 +891,6 @@ BEGIN
     RAISE EXCEPTION 'اسم المخدوم مطلوب';
   END IF;
 
-  IF p_birth_date IS NULL THEN
-    RAISE EXCEPTION 'تاريخ ميلاد المخدوم مطلوب';
-  END IF;
-
-  IF p_address IS NULL OR TRIM(p_address) = '' THEN
-    RAISE EXCEPTION 'عنوان المخدوم مطلوب';
-  END IF;
-
-  IF p_guardian_phone IS NULL OR TRIM(p_guardian_phone) = '' THEN
-    RAISE EXCEPTION 'رقم ولي الأمر مطلوب';
-  END IF;
-
   IF v_role = 'super_admin' THEN
     IF p_class_id IS NULL OR TRIM(p_class_id) = '' THEN
       RAISE EXCEPTION 'يجب اختيار الفصل الدراسي';
@@ -906,7 +909,7 @@ BEGIN
   INSERT INTO public.users (name, role, phone, class_id, title, qr_code, username, birth_date, address, guardian_phone)
   VALUES (
     TRIM(p_name), 'student', NULLIF(TRIM(p_phone), ''), v_class_id, 'مخدوم', v_qr_code, v_username,
-    p_birth_date, TRIM(p_address), TRIM(p_guardian_phone)
+    p_birth_date, NULLIF(TRIM(p_address), ''), NULLIF(TRIM(p_guardian_phone), '')
   )
   RETURNING users.id, users.name, users.qr_code, users.username, users.class_id, users.title;
 END;
@@ -914,6 +917,83 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.add_scoped_student(TEXT, DATE, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.add_scoped_student(TEXT, DATE, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+
+-- ========================================================
+-- UPDATE SCOPED STUDENT (تعديل بيانات مخدوم) — CLASS-SCOPED
+-- طلب Mr. Gerges 2026-09-27: بعد ما بيانات المخدوم (تاريخ الميلاد/العنوان/
+-- رقم ولي الأمر) بقت اختيارية وقت التسجيل، عايز الخدام (خادم عادي / أمين
+-- فصل / أمين فصل مساعد) يقدروا يكملوها بعدين — مش أمين الخدمة العامة بس.
+-- نفس نمط add_scoped_student() بالظبط:
+--   - servant / class_admin / assistant_admin -> يقدر يعدّل بس مخدوم فعلاً
+--     في فصله هو (current_user_class_id())، متأكد منها هنا سيرفر سايد،
+--     مش مجرد إخفاء الفورم. لو حاول يبعت id مخدوم في فصل تاني، بيترفض.
+--   - super_admin -> يقدر يعدّل أي مخدوم (already has full edit access via
+--     "إدارة المستخدمين"، الدالة دي بس بتديله نفس الطريقة من الشاشة الجديدة
+--     كمان لو استخدمها من هناك).
+--   - الحقول القابلة للتعديل هنا مقصورة على بيانات التواصل/التسجيل بس
+--     (phone/birth_date/address/guardian_phone) — نفس مبدأ update_own_
+--     profile() فوق: الاسم والدور والفصل وكود الـQR/الدخول لسه حصريين
+--     لأمين الخدمة من شاشة "إدارة المستخدمين"، عشان محدش يقدر يغيّر هوية
+--     حد من هنا.
+--   - باراميتر NULL معناه "متلمسش العمود ده" (زي update_own_profile())،
+--     نص فاضي معناه "امسحه" — عشان الفورم يقدر يبعت بس اللي المستخدم
+--     غيّره فعلاً.
+-- ========================================================
+CREATE OR REPLACE FUNCTION public.update_scoped_student(
+  p_student_id UUID,
+  p_phone TEXT DEFAULT NULL,
+  p_birth_date DATE DEFAULT NULL,
+  p_clear_birth_date BOOLEAN DEFAULT FALSE,
+  p_address TEXT DEFAULT NULL,
+  p_guardian_phone TEXT DEFAULT NULL
+)
+RETURNS public.users
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+  v_student public.users%ROWTYPE;
+  v_row public.users%ROWTYPE;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role NOT IN ('servant', 'class_admin', 'assistant_admin', 'super_admin') THEN
+    RAISE EXCEPTION 'غير مصرح لك بتعديل بيانات المخدومين';
+  END IF;
+
+  SELECT * INTO v_student FROM public.users WHERE id = p_student_id AND role = 'student';
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'المخدوم غير موجود';
+  END IF;
+
+  IF v_role <> 'super_admin' THEN
+    v_class_id := public.current_user_class_id();
+    IF v_student.class_id IS DISTINCT FROM v_class_id THEN
+      RAISE EXCEPTION 'غير مصرح لك — المخدوم ده مش في فصلك';
+    END IF;
+  END IF;
+
+  UPDATE public.users
+  SET
+    phone = CASE WHEN p_phone IS NOT NULL THEN NULLIF(TRIM(p_phone), '') ELSE phone END,
+    -- تاريخ الميلاد نوعه DATE، فمفيش "نص فاضي" نقدر نبعته زي باقي الحقول
+    -- عشان نمسحه — p_clear_birth_date هي الإشارة الصريحة لمسحه، وإلا لو
+    -- p_birth_date اتبعت بيتحدّث بيها، وإلا يفضل زي ما هو.
+    birth_date = CASE
+      WHEN p_clear_birth_date THEN NULL
+      WHEN p_birth_date IS NOT NULL THEN p_birth_date
+      ELSE birth_date
+    END,
+    address = CASE WHEN p_address IS NOT NULL THEN NULLIF(TRIM(p_address), '') ELSE address END,
+    guardian_phone = CASE WHEN p_guardian_phone IS NOT NULL THEN NULLIF(TRIM(p_guardian_phone), '') ELSE guardian_phone END
+  WHERE id = p_student_id
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.update_scoped_student(UUID, TEXT, DATE, BOOLEAN, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.update_scoped_student(UUID, TEXT, DATE, BOOLEAN, TEXT, TEXT) TO authenticated;
 
 -- ========================================================
 -- CLASS LEADERBOARD — POINTS TAB (لوحة الصدارة، تاب النقاط)
