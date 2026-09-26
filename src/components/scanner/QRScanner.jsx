@@ -1,9 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle, Search, Users } from 'lucide-react';
-import { recordAttendance, getManualAttendanceRoster, CLASSES } from '../../services/supabase';
+import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle, Search, Users, Undo2, Loader2 } from 'lucide-react';
+import { recordAttendance, cancelAttendance, getManualAttendanceRoster, getAttendanceLogs, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
+
+// طلب Mr. Gerges 2026-09-26: نفس معنى "حاضر" المستخدم في كشف الفصل
+// (ClassRosterModal.jsx) — حضر خلال آخر 7 أيام. هنا بقى نفس السلوك في
+// تبويب "تسجيل الحضور يدويًا": تكة واحدة تسجل الحضور وتضيف الـ10 نقط
+// وتنوّر الاسم أخضر، وتكة تانية على نفس الاسم تلغي الحضور وتخصم النقط
+// (كانت قبل كده بتسجل بس من غير أي تراجع ولا أي إشارة لونية للي حضر
+// فعلاً).
+const PRESENT_WINDOW_DAYS = 7;
 
 // Matches Navbar.jsx's role labels — بتتعرض جنب كل اسم في القائمة اليدوية.
 // أمين الخدمة العامة لسه بيشوف مخدومين وخدام مع بعض (فمحتاج كل التسميات)؛
@@ -16,7 +24,7 @@ const ROLE_LABELS = {
 };
 
 export default function QRScanner({ onScanSuccess }) {
-  const { showToast, triggerRefresh } = usePoints();
+  const { showToast, triggerRefresh, refreshKey } = usePoints();
   const { currentUser } = useAuth();
   const [lastScannedUser, setLastScannedUser] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -54,11 +62,45 @@ export default function QRScanner({ onScanSuccess }) {
   // فصلها من get_manual_attendance_roster() في قاعدة البيانات).
   const [manualSearchQuery, setManualSearchQuery] = useState('');
 
+  // طلب Mr. Gerges 2026-09-26: سجلات الحضور عشان نعرف مين "حاضر" فعلاً
+  // دلوقتي في القائمة اليدوية — نفس getAttendanceLogs() اللي كشف الفصل
+  // (ClassRosterModal.jsx) بيستخدمها، ومتاحة لأي عضو طاقم (مش super_admin
+  // بس) حسب سياسة "Staff can view all attendance". بتتجدد كل ما refreshKey
+  // يتغيّر (أي عملية حضور/نقط في أي مكان في الموقع) أو لما تبدّل بين وضع
+  // مدارس الأحد واجتماع الخدام، عشان كل وضع يوري "حاضر" بتاعه هو بس —
+  // طلب Mr. Gerges 2026-09-26 (تحديث): بقت شغالة في وضع اجتماع الخدام
+  // كمان، مش بس مدارس الأحد.
+  const [attendanceLogs, setAttendanceLogs] = useState([]);
+  const [togglingId, setTogglingId] = useState(null);
+  const activeLogType = isMeetingMode ? 'servants_meeting' : 'sunday_school';
+
   useEffect(() => {
     getManualAttendanceRoster(currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null)
       .then(setRosterUsers)
       .catch(() => setRosterUsers([]));
-  }, [currentUser?.role, currentUser?.class_id]);
+    getAttendanceLogs(activeLogType)
+      .then(setAttendanceLogs)
+      .catch(() => setAttendanceLogs([]));
+  }, [currentUser?.role, currentUser?.class_id, refreshKey, activeLogType]);
+
+  const lastAttendedMap = useMemo(() => {
+    const map = new Map();
+    (attendanceLogs || []).forEach(log => {
+      const t = new Date(log.timestamp);
+      const prev = map.get(log.user_id);
+      if (!prev || t > prev.date) {
+        map.set(log.user_id, { id: log.id, timestamp: log.timestamp, date: t });
+      }
+    });
+    return map;
+  }, [attendanceLogs]);
+
+  const isPresent = (userId) => {
+    const last = lastAttendedMap.get(userId);
+    if (!last) return false;
+    const days = (new Date() - last.date) / (1000 * 60 * 60 * 24);
+    return days < PRESENT_WINDOW_DAYS;
+  };
 
   // Process QR string
   const handleQRProcess = async (qrString) => {
@@ -101,6 +143,44 @@ export default function QRScanner({ onScanSuccess }) {
       showToast('خطأ في مسح QR', err.message || 'رمز QR غير معروف أو حدث خطأ أثناء التسجيل', 0, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // طلب Mr. Gerges 2026-09-26 (وتحديث بعدها بيوم): تكة تسجل حضور، وتكة
+  // تانية على نفس الاسم تلغيه — في وضع حضور مدارس الأحد العادي وفي وضع
+  // اجتماع الخدام كمان، كل وضع على حدة (activeLogType). نفس منطق
+  // handleMarkPresent في ClassRosterModal.jsx بالظبط: لو "حاضر" (خلال آخر 7
+  // أيام) بنلغي آخر سجل حضور حقيقي له من قاعدة البيانات (cancelAttendance)،
+  // وإلا بنسجله (recordAttendance عن طريق handleQRProcess الموجودة، عشان
+  // تفضل نفس رسالة النجاح وإضافة النقاط وكارت "تم الحضور" تحت). النقط
+  // بتتخصم بس لو كان مخدوم أصلاً معندوش نقط في اجتماع الخدام (recordAttendance
+  // نفسها مش بتضيف نقط غير في sunday_school).
+  const handleManualToggle = async (person) => {
+    if (loading || togglingId) return;
+    const last = lastAttendedMap.get(person.id);
+    const present = !!last && (new Date() - last.date) / (1000 * 60 * 60 * 24) < PRESENT_WINDOW_DAYS;
+
+    setTogglingId(person.id);
+    try {
+      if (present) {
+        await cancelAttendance({
+          attendanceLogId: last.id,
+          studentId: person.role === 'student' && !isMeetingMode ? person.id : null,
+          timestamp: last.timestamp
+        });
+        setLastScannedUser(null);
+        triggerRefresh();
+        const pointsNote = person.role === 'student' && !isMeetingMode ? ' وخُصمت الـ10 نقاط' : '';
+        showToast('تم إلغاء الحضور ⏪', `اتلغى حضور ${person.name}${pointsNote}`, 0, 'success');
+      } else {
+        await handleQRProcess(person.qr_code);
+      }
+      const logs = await getAttendanceLogs(activeLogType);
+      setAttendanceLogs(logs);
+    } catch (err) {
+      showToast('تعذر تنفيذ العملية', err.message || 'حدث خطأ، حاول مرة أخرى', 0, 'error');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -200,30 +280,55 @@ export default function QRScanner({ onScanSuccess }) {
         .filter(g => g.people.length > 0)
     : null;
 
-  const renderPersonCard = (user) => (
-    <button
-      key={user.id}
-      onClick={() => handleQRProcess(user.qr_code)}
-      disabled={loading}
-      className="p-3.5 rounded-2xl border border-slate-200 hover:border-sky-500 bg-slate-50 hover:bg-sky-50/50 flex items-center justify-between text-right transition-all group"
-    >
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-sky-100 group-hover:bg-sky-600 text-sky-700 group-hover:text-white flex items-center justify-center font-bold text-sm transition-colors">
-          {user.name[0]}
-        </div>
-        <div>
-          <h4 className="font-bold text-slate-800 text-xs">{user.name}</h4>
-          <span className="text-[10px] text-slate-500 block">
-            {ROLE_LABELS[user.role] || user.role} | {user.qr_code}
-          </span>
-        </div>
-      </div>
+  // طلب Mr. Gerges 2026-09-26 (وتحديث بعدها بيوم): الكارت بقى بيوري حالة
+  // الشخص فعليًا (حاضر = أخضر) وبيبقى تكة تسجيل/تكة إلغاء — في وضع حضور
+  // مدارس الأحد وفي وضع اجتماع الخدام مع بعض، كل وضع بيتتبع حضوره هو بس
+  // (activeLogType فوق في lastAttendedMap).
+  const renderPersonCard = (user) => {
+    const present = isPresent(user.id);
+    const toggling = togglingId === user.id;
 
-      <div className="px-2.5 py-1 rounded-lg bg-sky-600 text-white font-bold text-[10px] group-hover:scale-105 transition-transform">
-        تسجيل ⚡️
-      </div>
-    </button>
-  );
+    return (
+      <button
+        key={user.id}
+        onClick={() => handleManualToggle(user)}
+        disabled={loading || !!togglingId}
+        title={!present ? 'اضغط لتسجيل حضوره الآن' : 'اضغط لإلغاء حضوره'}
+        className={`p-3.5 rounded-2xl border flex items-center justify-between text-right transition-all group ${
+          !present
+            ? 'border-slate-200 hover:border-sky-500 bg-slate-50 hover:bg-sky-50/50'
+            : 'border-emerald-300 bg-emerald-50 hover:border-amber-400 hover:bg-amber-50/60'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm transition-colors ${
+            !present
+              ? 'bg-sky-100 group-hover:bg-sky-600 text-sky-700 group-hover:text-white'
+              : 'bg-emerald-500 text-white'
+          }`}>
+            {user.name[0]}
+          </div>
+          <div>
+            <h4 className={`font-bold text-xs ${present ? 'text-emerald-800' : 'text-slate-800'}`}>{user.name}</h4>
+            <span className="text-[10px] text-slate-500 block">
+              {ROLE_LABELS[user.role] || user.role} | {user.qr_code}
+            </span>
+          </div>
+        </div>
+
+        <div className={`px-2.5 py-1 rounded-lg text-white font-bold text-[10px] flex items-center gap-1 group-hover:scale-105 transition-transform ${
+          !present ? 'bg-sky-600' : 'bg-emerald-600'
+        }`}>
+          {toggling ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : present ? (
+            <Undo2 className="w-3 h-3" />
+          ) : null}
+          {toggling ? (present ? 'جاري الإلغاء...' : 'جاري التسجيل...') : present ? 'حاضر ✅' : 'تسجيل ⚡️'}
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div className="max-w-xl mx-auto space-y-6 dir-rtl text-right">

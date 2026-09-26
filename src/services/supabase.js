@@ -902,15 +902,21 @@ export async function getUsers() {
 // cancelAttendance() تحت لتفاصيل ليه ده آمن.
 // طلب 2026-09-23: بعد إضافة حضور اجتماع الخدام المنفصل، الدالة دي (اللي
 // كشف الفصل وحساب حاضر/غايب في الإحصائيات العامة بيعتمدوا عليها) لازم تفضل
-// مقصورة على حضور مدارس الأحد بس — غير كده خادم حضر اجتماع أبونا هيبان
-// "حاضر" في كشف فصله وهو أصلاً معندوش أي حضور مدارس أحد حقيقي.
-export async function getAttendanceLogs() {
+// مقصورة على نوع سجل واحد بس (sunday_school هو الافتراضي، زي ما كان دايمًا)
+// — غير كده خادم حضر اجتماع أبونا هيبان "حاضر" في كشف فصله وهو أصلاً
+// معندوش أي حضور مدارس أحد حقيقي. طلب Mr. Gerges 2026-09-26: تبويب
+// "تسجيل الحضور يدويًا" في وضع اجتماع الخدام بقى محتاج نفس فكرة "مين حاضر
+// دلوقتي" بس لاجتماع الخدام (servants_meeting)، فبقى فيها باراميتر logType
+// اختياري بدل ما تكون مقفولة على sunday_school بس — أي كود قديم بينادي
+// عليها من غير باراميتر (Analytics.jsx / ClassRosterModal.jsx) سلوكه فضل
+// بالظبط زي ما كان.
+export async function getAttendanceLogs(logType = 'sunday_school') {
   if (isSupabaseConfigured()) {
-    const { data, error } = await supabase.from('attendance_logs').select('id, user_id, timestamp').eq('log_type', 'sunday_school');
+    const { data, error } = await supabase.from('attendance_logs').select('id, user_id, timestamp').eq('log_type', logType);
     if (error) throw error;
     return data || [];
   }
-  return getMockData().attendance_logs.filter(l => (l.log_type || 'sunday_school') === 'sunday_school');
+  return getMockData().attendance_logs.filter(l => (l.log_type || 'sunday_school') === logType);
 }
 
 // سجل غياب وحضور الخدام (super_admin فقط) — بيرجع لكل خادم (أمين فصل / أمين
