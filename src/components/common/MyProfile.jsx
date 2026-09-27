@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserCircle2, Phone, MapPin, Users2, Save, Loader2, ShieldCheck, RefreshCcw } from 'lucide-react';
+import { UserCircle2, Phone, MapPin, Users2, Save, Loader2, ShieldCheck, RefreshCcw, Cake } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import { updateOwnProfile, switchTrainingRole, CLASSES } from '../../services/supabase';
@@ -30,6 +30,10 @@ export default function MyProfile() {
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [address, setAddress] = useState(currentUser?.address || '');
   const [guardianPhone, setGuardianPhone] = useState(currentUser?.guardian_phone || '');
+  // طلب Mr. Gerges 2026-09-27: تاريخ الميلاد بقى قابل للتعديل الذاتي لأي
+  // دور (مش بس المخدوم) — عشان أمين الخدمة يقدر يشوف "أعياد ميلاد الشهر
+  // ده" لكل الخدام في الإحصائيات العامة.
+  const [birthDate, setBirthDate] = useState(currentUser?.birth_date || '');
   const [saving, setSaving] = useState(false);
 
   // حساب التدريب بس — تبديل الدور، شوف switch_training_role() في schema.sql
@@ -48,7 +52,9 @@ export default function MyProfile() {
         userId: currentUser.id,
         phone,
         address: isStudent ? address : null,
-        guardianPhone: isStudent ? guardianPhone : null
+        guardianPhone: isStudent ? guardianPhone : null,
+        birthDate: birthDate || null,
+        clearBirthDate: !birthDate
       });
       await refreshProfile();
       showToast('تم الحفظ ✏️', 'بياناتك اتحدثت بنجاح', 0, 'success');
@@ -129,6 +135,20 @@ export default function MyProfile() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="01xxxxxxxxx"
+            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none font-bold text-sm transition-all"
+          />
+        </div>
+
+        {/* طلب Mr. Gerges 2026-09-27: عيد الميلاد — متاح لكل الأدوار (مش
+            بس المخدوم)، عشان أمين الخدمة يشوف أعياد ميلاد الخدام شهريًا. */}
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1.5 flex items-center gap-1.5">
+            <Cake className="w-3.5 h-3.5" /> تاريخ الميلاد
+          </label>
+          <input
+            type="date"
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none font-bold text-sm transition-all"
           />
         </div>

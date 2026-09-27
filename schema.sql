@@ -1289,11 +1289,24 @@ GRANT EXECUTE ON FUNCTION public.get_servant_meeting_attendance_log() TO authent
 -- "Super admin can update users" بترفض أي UPDATE من غير super_admin، فالدالة
 -- دي SECURITY DEFINER بتلف حواليها بس لصف صاحب الحساب نفسه، ونطاق ضيق جدًا
 -- من الأعمدة. باراميتر NULL معناه "متلمسش العمود ده"؛ نص فاضي معناه "امسحه".
+--
+-- طلب Mr. Gerges 2026-09-27: تاريخ الميلاد بقى قابل للتعديل الذاتي كمان —
+-- لكل الأدوار (مش بس المخدوم)، عشان كل خادم يدخل عيد ميلاده بنفسه، وأمين
+-- الخدمة يشوف "أعياد ميلاد الشهر ده" في الإحصائيات العامة (get_users()
+-- بترجع birth_date أصلاً لأي staff، مفيش داعي لدالة جديدة للعرض). تاريخ
+-- الميلاد نوعه DATE مش TEXT، فمفيش "نص فاضي" نقدر نبعته عشان نمسحه —
+-- p_clear_birth_date هي الإشارة الصريحة لمسحه (نفس نمط update_scoped_
+-- student() فوق). التوقيع اتغيّر (باراميترز جداد) فلازم DROP صريح للنسخة
+-- القديمة الأقصر.
 -- ========================================================
+DROP FUNCTION IF EXISTS public.update_own_profile(TEXT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.update_own_profile(
   p_phone TEXT DEFAULT NULL,
   p_address TEXT DEFAULT NULL,
-  p_guardian_phone TEXT DEFAULT NULL
+  p_guardian_phone TEXT DEFAULT NULL,
+  p_birth_date DATE DEFAULT NULL,
+  p_clear_birth_date BOOLEAN DEFAULT FALSE
 )
 RETURNS public.users
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -1310,7 +1323,12 @@ BEGIN
   SET
     phone = CASE WHEN p_phone IS NOT NULL THEN NULLIF(TRIM(p_phone), '') ELSE phone END,
     address = CASE WHEN p_address IS NOT NULL THEN NULLIF(TRIM(p_address), '') ELSE address END,
-    guardian_phone = CASE WHEN p_guardian_phone IS NOT NULL THEN NULLIF(TRIM(p_guardian_phone), '') ELSE guardian_phone END
+    guardian_phone = CASE WHEN p_guardian_phone IS NOT NULL THEN NULLIF(TRIM(p_guardian_phone), '') ELSE guardian_phone END,
+    birth_date = CASE
+      WHEN p_clear_birth_date THEN NULL
+      WHEN p_birth_date IS NOT NULL THEN p_birth_date
+      ELSE birth_date
+    END
   WHERE id = v_id
   RETURNING * INTO v_row;
 
@@ -1322,8 +1340,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT, DATE, BOOLEAN) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT, DATE, BOOLEAN) TO authenticated;
 
 -- ========================================================
 -- SWITCH TRAINING ROLE (حساب التدريب — تبديل الدور بنفسه) — طلب Mr. Gerges

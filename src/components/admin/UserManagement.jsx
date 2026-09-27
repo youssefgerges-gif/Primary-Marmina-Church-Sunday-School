@@ -239,7 +239,14 @@ export default function UserManagement() {
     if (!formData.name.trim()) return;
 
     try {
-      const savedUser = await saveUser(formData);
+      // طلب Mr. Gerges 2026-09-27: تعديل بيانات خادم (مفيهوش تاريخ ميلاد
+      // أصلاً — الحقل ده خاص بالمخدومين بس) كان بيبعت birth_date كـ""
+      // (نص فاضي) على طول لعمود من نوع DATE في قاعدة البيانات، فكانت
+      // بترفضه بخطأ "invalid input syntax for type date". لازم NULL مش
+      // نص فاضي لعمود DATE — باقي الحقول (النصوص العادية) نص فاضي عندها
+      // مقبول ومتجاهل عادي.
+      const payload = { ...formData, birth_date: formData.birth_date || null };
+      const savedUser = await saveUser(payload);
       const updated = await getUsers();
       setUsers(updated);
       triggerRefresh();

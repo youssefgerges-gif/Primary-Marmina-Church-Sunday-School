@@ -1328,12 +1328,18 @@ export async function getMyProfile(authUserId) {
 // update_own_profile() في schema.sql (SECURITY DEFINER، بتلف بس لصف صاحب
 // الحساب نفسه) — الدالة دي هنا مجرد نداء عليها. userId مستخدم بس في وضع
 // mock/تجربة (لما مفيش Supabase حقيقي متوصل).
-export async function updateOwnProfile({ userId, phone, address, guardianPhone } = {}) {
+// طلب Mr. Gerges 2026-09-27: birthDate/clearBirthDate اتضافوا — كل حساب (أي
+// دور) يقدر يدخل عيد ميلاده بنفسه، مش بس المخدوم. تاريخ الميلاد نوعه DATE
+// في قاعدة البيانات، فمفيش "نص فاضي" يمسحه — clearBirthDate صراحةً هي اللي
+// بتمسحه (شوف update_own_profile() في schema.sql).
+export async function updateOwnProfile({ userId, phone, address, guardianPhone, birthDate, clearBirthDate } = {}) {
   if (isSupabaseConfigured()) {
     const { data, error } = await supabase.rpc('update_own_profile', {
       p_phone: phone ?? null,
       p_address: address ?? null,
-      p_guardian_phone: guardianPhone ?? null
+      p_guardian_phone: guardianPhone ?? null,
+      p_birth_date: birthDate || null,
+      p_clear_birth_date: !!clearBirthDate
     });
     if (error) throw new Error(error.message || 'تعذر حفظ البيانات');
     return data;
@@ -1346,6 +1352,8 @@ export async function updateOwnProfile({ userId, phone, address, guardianPhone }
   if (phone !== undefined && phone !== null) updated.phone = String(phone).trim() || null;
   if (address !== undefined && address !== null) updated.address = String(address).trim() || null;
   if (guardianPhone !== undefined && guardianPhone !== null) updated.guardian_phone = String(guardianPhone).trim() || null;
+  if (clearBirthDate) updated.birth_date = null;
+  else if (birthDate) updated.birth_date = birthDate;
   db.users[idx] = updated;
   saveMockData(db);
   return updated;

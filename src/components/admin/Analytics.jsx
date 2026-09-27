@@ -1,9 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserCheck, Award, TrendingUp, Shield, Crown, User, ChevronLeft } from 'lucide-react';
+import { Users, UserCheck, Award, TrendingUp, Shield, Crown, User, ChevronLeft, Cake } from 'lucide-react';
 import { getUsers, getAttendanceLogs, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import SaintIconArt from '../common/SaintIconArt';
 import ClassRosterModal from './ClassRosterModal';
+
+// طلب Mr. Gerges 2026-09-27: أعياد ميلاد الخدام — أمين الخدمة يشوف هنا مين
+// من الخدام (مش المخدومين) عيد ميلاده في الشهر الحالي، حسب تاريخ الميلاد
+// اللي كل خادم بيدخله بنفسه من شاشة "بياناتي" (update_own_profile() في
+// schema.sql). بيتحسب هنا من نفس getUsers() اللي أصلاً بترجع birth_date
+// لأي staff — مفيش داعي لدالة/نداء جديد لقاعدة البيانات.
+const ROLE_LABELS = {
+  super_admin: 'أمين خدمة',
+  class_admin: 'أمين فصل',
+  assistant_admin: 'أمين فصل مساعد',
+  servant: 'خادم'
+};
 
 export default function Analytics() {
   const { refreshKey } = usePoints();
@@ -54,6 +66,15 @@ export default function Analytics() {
     });
   }, [refreshKey]);
 
+  // خدام (مش مخدومين) عندهم تاريخ ميلاد مسجل وبيوافق الشهر الحالي — مرتبين
+  // بيوم الشهر (الأقرب الأول).
+  const currentMonth = new Date().getMonth();
+  const birthdaysThisMonth = allUsers
+    .filter(u => u.role !== 'student' && u.birth_date)
+    .map(u => ({ ...u, _bday: new Date(u.birth_date) }))
+    .filter(u => u._bday.getUTCMonth() === currentMonth)
+    .sort((a, b) => a._bday.getUTCDate() - b._bday.getUTCDate());
+
   return (
     <div className="space-y-6 dir-rtl text-right">
       
@@ -70,6 +91,35 @@ export default function Analytics() {
           <Award className="w-10 h-10" />
         </div>
       </div>
+
+      {/* طلب Mr. Gerges 2026-09-27: أعياد ميلاد الخدام في الشهر الحالي —
+          ظاهرة بس لو في خادم أو أكتر عيد ميلاده الشهر ده، عشان الشاشة ما
+          تتزنقش بكارت فاضي أغلب الوقت. */}
+      {birthdaysThisMonth.length > 0 && (
+        <div className="bg-gradient-to-l from-amber-50 to-rose-50 rounded-3xl p-6 border-2 border-dashed border-amber-300 shadow-sm space-y-3">
+          <h3 className="font-extrabold text-amber-900 text-base flex items-center gap-2">
+            <Cake className="w-5 h-5 text-amber-600" /> أعياد ميلاد الخدام الشهر ده ({birthdaysThisMonth.length})
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {birthdaysThisMonth.map(u => (
+              <div
+                key={u.id}
+                className="flex items-center gap-2.5 bg-white/80 rounded-2xl p-3 border border-amber-200/70"
+              >
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
+                  {u.name?.[0]}
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-xs font-bold text-slate-900 truncate">{u.name}</span>
+                  <span className="block text-[10px] text-amber-700 font-bold">
+                    {ROLE_LABELS[u.role] || u.role} · {u._bday.getUTCDate()} {u._bday.toLocaleDateString('ar-EG', { month: 'long', timeZone: 'UTC' })}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* KPI Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
