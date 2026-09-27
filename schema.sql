@@ -1580,17 +1580,22 @@ BEGIN
     RAISE EXCEPTION 'غير مصرح لك بعرض ترتيب الفصول';
   END IF;
 
+  -- طلب Mr. Gerges 2026-09-27 (تصحيح): SUM(عمود INTEGER) في بوستجرس بترجع
+  -- bigint، مش numeric — وده كان بيخلي postgREST يرفض الرد كله بخطأ 42804
+  -- "structure of query does not match function result type" لأن الأعمدة
+  -- هنا متعرّفة NUMERIC في RETURNS TABLE فوق. ::NUMERIC صريحة بعد كل SUM
+  -- بتحل المشكلة.
   RETURN QUERY
   SELECT
     o.class_id,
-    COALESCE(SUM(o.hymn_score), 0) AS total_hymn,
-    COALESCE(SUM(o.bible_reading_score), 0) AS total_bible_reading,
-    COALESCE(SUM(o.questions_score), 0) AS total_questions,
-    COALESCE(SUM(o.quietness_score), 0) AS total_quietness,
+    COALESCE(SUM(o.hymn_score), 0)::NUMERIC AS total_hymn,
+    COALESCE(SUM(o.bible_reading_score), 0)::NUMERIC AS total_bible_reading,
+    COALESCE(SUM(o.questions_score), 0)::NUMERIC AS total_questions,
+    COALESCE(SUM(o.quietness_score), 0)::NUMERIC AS total_quietness,
     COALESCE(SUM(
       COALESCE(o.hymn_score, 0) + COALESCE(o.bible_reading_score, 0) +
       COALESCE(o.questions_score, 0) + COALESCE(o.quietness_score, 0)
-    ), 0) AS total_score
+    ), 0)::NUMERIC AS total_score
   FROM public.opening_segment_scores o
   WHERE p_score_date IS NULL OR o.score_date = p_score_date
   GROUP BY o.class_id
