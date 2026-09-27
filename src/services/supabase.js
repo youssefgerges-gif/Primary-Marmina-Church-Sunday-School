@@ -1484,3 +1484,4 @@ export async function getOpeningSegmentLeaderboard({ date } = {}) {
   });
   return Object.values(byClass).sort((a, b) => b.total_score - a.total_score);
 }
+

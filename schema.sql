@@ -1605,3 +1605,10 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.get_opening_segment_leaderboard(DATE) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_opening_segment_leaderboard(DATE) TO authenticated;
+
+-- طلب Mr. Gerges 2026-09-27 (رجوع في القرار نفس اليوم): زرار "تصفير كل
+-- النقاط" اللي اتضاف هنا اتشال تاني فورًا — كان هيصفّر نقاط كل المخدومين
+-- الحقيقية كمان، وده مش اللي كان مقصود؛ القصد كان بس تنضيف بيانات تجربة
+-- شخصية. الـDROP هنا يشيل الدالة من أي قاعدة بيانات حقيقية سبق وشغّلت
+-- عليها النسخة اللي كانت فيها الدالة دي.
+DROP FUNCTION IF EXISTS public.reset_all_points_and_opening_segment_scores();
