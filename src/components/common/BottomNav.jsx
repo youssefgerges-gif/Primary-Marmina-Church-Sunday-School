@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus, BarChart3, CreditCard, UserCircle2 } from 'lucide-react';
+import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus, BarChart3, CreditCard, UserCircle2, Music4 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function BottomNav({ activeTab, setActiveTab }) {
@@ -71,6 +71,16 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             >
               <CreditCard className="w-5 h-5 mb-0.5" />
               <span className="text-[10px] whitespace-nowrap">أكواد QR</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('servant-opening-segment')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'servant-opening-segment' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Music4 className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">الفقرة الافتتاحية</span>
             </button>
 
             <button
@@ -155,6 +165,15 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             >
               <BarChart3 className="w-5 h-5 mb-0.5" />
               <span className="text-[10px] whitespace-nowrap">سجل حضور الخدام</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('servant-opening-segment')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'servant-opening-segment' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Music4 className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">الفقرة الافتتاحية</span>
             </button>
             <button
               onClick={() => setActiveTab('scanner')}

@@ -1391,3 +1391,212 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public.switch_training_role(TEXT, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.switch_training_role(TEXT, TEXT) TO authenticated;
+
+-- ========================================================
+-- OPENING SEGMENT SCORES (الفقرة الافتتاحية — نقاط بين الفصول) — طلب
+-- Mr. Gerges 2026-09-27: "الفقرة الافتتاحية" فقرة بتحصل في بداية كل لقاء
+-- أسبوعي (ترنيمة + قراءة إنجيل + أسئلة عن الإنجيل اللي اتقرا + هدوء)، وكل
+-- فصل بيبقى فريق واحد بياخد درجات على أدائه ككل (مش على مخدوم بعينه جواه) —
+-- عشان يبقى في تنافس بين الفصول. المسؤول عن تسجيل الدرجات: خدام الفصل
+-- (خادم/أمين فصل/أمين فصل مساعد — لفصلهم بس) وأمين الخدمة العامة (لأي فصل).
+-- كل بند (ترنيمة/قراءة/أسئلة/هدوء) بدرجته لوحده، وبيتسجلوا مرة واحدة لكل
+-- فصل في كل لقاء (تاريخ) — تسجيل تاني لنفس الفصل في نفس التاريخ بيحدّث
+-- الدرجات بدل ما يضيف صف جديد (UNIQUE على class_id + score_date).
+-- ========================================================
+CREATE TABLE IF NOT EXISTS public.opening_segment_scores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  class_id TEXT NOT NULL,
+  score_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  hymn_score INTEGER CHECK (hymn_score IS NULL OR hymn_score >= 0),
+  bible_reading_score INTEGER CHECK (bible_reading_score IS NULL OR bible_reading_score >= 0),
+  questions_score INTEGER CHECK (questions_score IS NULL OR questions_score >= 0),
+  quietness_score INTEGER CHECK (quietness_score IS NULL OR quietness_score >= 0),
+  updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (class_id, score_date)
+);
+
+-- طلب Mr. Gerges 2026-09-27 (تحديث): "ممكن فاليوم في فقرة تتلغي" — إدخال
+-- الدرجات بقى اختياري بند بند، مش إلزامي كله مرة واحدة. البنود الأربعة كانت
+-- NOT NULL DEFAULT 0 (أي درجة متسجلتش كانت بتتخزن صفر تلقائي، فمفيش فرق بين
+-- "الفقرة اتلغت النهارده" و"سجّل صفر فعلاً") — دلوقتي بقت NULLable، وفاضي
+-- (NULL) معناه "البند ده متسجلش/متلغاش"، مش صفر. الـALTER هنا احتياط لو
+-- الجدول كان اتعمل قبل كده بالقيود القديمة (NOT NULL DEFAULT) على قاعدة
+-- بيانات حقيقية شغالة بالفعل — آمن يتكرر تشغيله.
+ALTER TABLE public.opening_segment_scores ALTER COLUMN hymn_score DROP NOT NULL;
+ALTER TABLE public.opening_segment_scores ALTER COLUMN hymn_score DROP DEFAULT;
+ALTER TABLE public.opening_segment_scores ALTER COLUMN bible_reading_score DROP NOT NULL;
+ALTER TABLE public.opening_segment_scores ALTER COLUMN bible_reading_score DROP DEFAULT;
+ALTER TABLE public.opening_segment_scores ALTER COLUMN questions_score DROP NOT NULL;
+ALTER TABLE public.opening_segment_scores ALTER COLUMN questions_score DROP DEFAULT;
+ALTER TABLE public.opening_segment_scores ALTER COLUMN quietness_score DROP NOT NULL;
+ALTER TABLE public.opening_segment_scores ALTER COLUMN quietness_score DROP DEFAULT;
+ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_hymn_score_check;
+ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_hymn_score_check CHECK (hymn_score IS NULL OR hymn_score >= 0);
+ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_bible_reading_score_check;
+ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_bible_reading_score_check CHECK (bible_reading_score IS NULL OR bible_reading_score >= 0);
+ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_questions_score_check;
+ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_questions_score_check CHECK (questions_score IS NULL OR questions_score >= 0);
+ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_quietness_score_check;
+ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_quietness_score_check CHECK (quietness_score IS NULL OR quietness_score >= 0);
+
+ALTER TABLE public.opening_segment_scores ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Opening Segment Access" ON public.opening_segment_scores;
+CREATE POLICY "Public Opening Segment Access" ON public.opening_segment_scores FOR ALL USING (true) WITH CHECK (true);
+
+-- تسجيل/تحديث درجات فصل في لقاء معين — upsert. كل بند بيتخزن بالظبط زي ما
+-- اتبعت (باراميتر فاضي/NULL بيتخزن NULL فعلاً، يعني "البند ده متسجلش/الفقرة
+-- دي اتلغت"، مش صفر) — الواجهة (OpeningSegmentScores.jsx) بتجيب الدرجات
+-- المسجلة قبل كده وتحطها في الفورم قبل التعديل، فلو الخادم عدّل بند واحد بس
+-- الباقي بيتبعت زي ما كان محفوظ أصلاً (مش بيتمسح). أي خادم/أمين فصل/مساعد
+-- بيتفرض عليه فصله هو بس (بيتجاهل أي class_id متبعت)، وأمين الخدمة العامة
+-- لازم يختار الفصل.
+CREATE OR REPLACE FUNCTION public.record_opening_segment_score(
+  p_class_id TEXT,
+  p_score_date DATE DEFAULT CURRENT_DATE,
+  p_hymn_score INTEGER DEFAULT NULL,
+  p_bible_reading_score INTEGER DEFAULT NULL,
+  p_questions_score INTEGER DEFAULT NULL,
+  p_quietness_score INTEGER DEFAULT NULL
+)
+RETURNS public.opening_segment_scores
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+  v_score_date DATE;
+  v_row public.opening_segment_scores%ROWTYPE;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role NOT IN ('servant', 'class_admin', 'assistant_admin', 'super_admin') THEN
+    RAISE EXCEPTION 'غير مصرح لك بتسجيل درجات الفقرة الافتتاحية';
+  END IF;
+
+  IF v_role = 'super_admin' THEN
+    v_class_id := p_class_id;
+    IF v_class_id IS NULL OR TRIM(v_class_id) = '' THEN
+      RAISE EXCEPTION 'يجب اختيار الفصل الدراسي';
+    END IF;
+  ELSE
+    v_class_id := public.current_user_class_id();
+  END IF;
+
+  v_score_date := COALESCE(p_score_date, CURRENT_DATE);
+
+  INSERT INTO public.opening_segment_scores (
+    class_id, score_date, hymn_score, bible_reading_score, questions_score, quietness_score, updated_by
+  )
+  VALUES (
+    v_class_id, v_score_date,
+    p_hymn_score, p_bible_reading_score, p_questions_score, p_quietness_score,
+    public.current_user_id()
+  )
+  ON CONFLICT (class_id, score_date) DO UPDATE SET
+    hymn_score = p_hymn_score,
+    bible_reading_score = p_bible_reading_score,
+    questions_score = p_questions_score,
+    quietness_score = p_quietness_score,
+    updated_by = public.current_user_id(),
+    updated_at = NOW()
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.record_opening_segment_score(TEXT, DATE, INTEGER, INTEGER, INTEGER, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.record_opening_segment_score(TEXT, DATE, INTEGER, INTEGER, INTEGER, INTEGER) TO authenticated;
+
+-- درجات فصل معين في لقاء معين (للفورم — عشان لما الخادم يفتح الشاشة يلاقي
+-- الدرجات اللي اتسجلت النهارده لو أي حد سجل حاجة قبل كده، مش يبدأ من صفر
+-- كل مرة). نفس منطق الصلاحية والفصل اللي في record_opening_segment_score
+-- فوق بالظبط.
+CREATE OR REPLACE FUNCTION public.get_opening_segment_score(
+  p_class_id TEXT DEFAULT NULL,
+  p_score_date DATE DEFAULT CURRENT_DATE
+)
+RETURNS TABLE (
+  class_id TEXT,
+  score_date DATE,
+  hymn_score INTEGER,
+  bible_reading_score INTEGER,
+  questions_score INTEGER,
+  quietness_score INTEGER
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+  v_class_id TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL OR v_role NOT IN ('servant', 'class_admin', 'assistant_admin', 'super_admin') THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض درجات الفقرة الافتتاحية';
+  END IF;
+
+  IF v_role = 'super_admin' THEN
+    v_class_id := p_class_id;
+    IF v_class_id IS NULL OR TRIM(v_class_id) = '' THEN
+      RAISE EXCEPTION 'يجب اختيار الفصل الدراسي';
+    END IF;
+  ELSE
+    v_class_id := public.current_user_class_id();
+  END IF;
+
+  RETURN QUERY
+  SELECT o.class_id, o.score_date, o.hymn_score, o.bible_reading_score, o.questions_score, o.quietness_score
+  FROM public.opening_segment_scores o
+  WHERE o.class_id = v_class_id AND o.score_date = COALESCE(p_score_date, CURRENT_DATE);
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_opening_segment_score(TEXT, DATE) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_opening_segment_score(TEXT, DATE) TO authenticated;
+
+-- ترتيب الفصول (Leaderboard) — بمجموع كل درجاتهم من أول ما الميزة دي
+-- اشتغلت (p_score_date = NULL، الوضع الافتراضي)، أو بدرجات يوم واحد بعينه
+-- بس (p_score_date = تاريخ معين) — طلب Mr. Gerges 2026-09-27: عايز يشوف
+-- "صدارة اليوم" و"الصدارة العامة" مع بعض في نفس الشاشة، فنفس الدالة بتخدم
+-- الاتنين. متاحة لأي حساب مسجّل دخول (كل الأدوار، بما فيهم المخدوم) عشان
+-- تبان روح التنافس للكل، مش بس للخدام. التوقيع اتغيّر (باراميتر جديد)
+-- فلازم DROP صريح للنسخة القديمة من غير باراميترات.
+DROP FUNCTION IF EXISTS public.get_opening_segment_leaderboard();
+
+CREATE OR REPLACE FUNCTION public.get_opening_segment_leaderboard(p_score_date DATE DEFAULT NULL)
+RETURNS TABLE (
+  class_id TEXT,
+  total_hymn NUMERIC,
+  total_bible_reading NUMERIC,
+  total_questions NUMERIC,
+  total_quietness NUMERIC,
+  total_score NUMERIC
+)
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
+DECLARE
+  v_role TEXT;
+BEGIN
+  v_role := public.current_user_role();
+  IF v_role IS NULL THEN
+    RAISE EXCEPTION 'غير مصرح لك بعرض ترتيب الفصول';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    o.class_id,
+    COALESCE(SUM(o.hymn_score), 0) AS total_hymn,
+    COALESCE(SUM(o.bible_reading_score), 0) AS total_bible_reading,
+    COALESCE(SUM(o.questions_score), 0) AS total_questions,
+    COALESCE(SUM(o.quietness_score), 0) AS total_quietness,
+    COALESCE(SUM(
+      COALESCE(o.hymn_score, 0) + COALESCE(o.bible_reading_score, 0) +
+      COALESCE(o.questions_score, 0) + COALESCE(o.quietness_score, 0)
+    ), 0) AS total_score
+  FROM public.opening_segment_scores o
+  WHERE p_score_date IS NULL OR o.score_date = p_score_date
+  GROUP BY o.class_id
+  ORDER BY total_score DESC;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_opening_segment_leaderboard(DATE) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_opening_segment_leaderboard(DATE) TO authenticated;

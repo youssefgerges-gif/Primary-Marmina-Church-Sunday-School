@@ -17,6 +17,7 @@ import ClassLeaderboard from './components/servant/ClassLeaderboard';
 import ManualPointsTool from './components/servant/ManualPointsTool';
 import AddStudentTool from './components/servant/AddStudentTool';
 import StudentQRDirectory from './components/servant/StudentQRDirectory';
+import OpeningSegmentScores from './components/servant/OpeningSegmentScores';
 
 // Admin Components
 import Analytics from './components/admin/Analytics';
@@ -42,10 +43,10 @@ import HistoryTimeline from './components/student/HistoryTimeline';
 // غير استثناء — شاشة عرض/تعديل ذاتي للبيانات الأساسية، فاتضافت آخر كل
 // array تحت.
 const TABS_BY_ROLE = {
-  super_admin: ['admin-analytics', 'admin-efteqad', 'admin-users', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-attendance-log', 'scanner', 'my-profile'],
-  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'my-profile'],
-  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'my-profile'],
-  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'my-profile'],
+  super_admin: ['admin-analytics', 'admin-efteqad', 'admin-users', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-attendance-log', 'servant-opening-segment', 'scanner', 'my-profile'],
+  class_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'servant-opening-segment', 'my-profile'],
+  assistant_admin: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'servant-opening-segment', 'my-profile'],
+  servant: ['scanner', 'servant-leaderboard', 'servant-manual-points', 'servant-add-student', 'servant-qr-directory', 'servant-opening-segment', 'my-profile'],
   student: ['student-card', 'student-history', 'my-profile']
 };
 const DEFAULT_TAB_BY_ROLE = {
@@ -164,6 +165,10 @@ function MainContent() {
                 عصرًا). الحساب نفسه بيتم في get_servant_attendance_log() في
                 قاعدة البيانات (super_admin فقط). */}
             {activeTab === 'servant-attendance-log' && <ServantAttendanceLog />}
+            {/* طلب Mr. Gerges 2026-09-27: "الفقرة الافتتاحية" — درجات الفصل
+                ككل (ترنيمة/قراءة إنجيل/أسئلة/هدوء)، متاحة لأمين الخدمة العامة
+                لأي فصل (مش مقفول على فصل واحد زي باقي الخدام). */}
+            {activeTab === 'servant-opening-segment' && <OpeningSegmentScores />}
             {/* أمين الخدمة العامة ما كانش قدامه أي طريقة يسجل بيها حضور خالص
                 (لا كاميرا ولا تسجيل يدوي) — نفس شاشة الماسح اللي أمناء
                 الفصول/المساعدين/الخدام شايفينها، وبما إنه مش مقفول على فصل
@@ -191,6 +196,10 @@ function MainContent() {
                 (نفس الدالة المستخدمة أصلاً في تبويب التسجيل اليدوي بشاشة
                 الماسح). */}
             {activeTab === 'servant-qr-directory' && <StudentQRDirectory />}
+            {/* طلب Mr. Gerges 2026-09-27: "الفقرة الافتتاحية" — مقفولة على
+                فصل صاحب الحساب سيرفر سايد جوه record_opening_segment_score()
+                و get_opening_segment_score(). */}
+            {activeTab === 'servant-opening-segment' && <OpeningSegmentScores />}
           </>
         )}
 

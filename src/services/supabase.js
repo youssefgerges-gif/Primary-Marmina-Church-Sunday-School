@@ -334,7 +334,14 @@ const saveMockData = (data) => {
 // — نفس الدالة والـUI (كاميرا + يدوي)، بس بيتسجل في attendance_logs بعمود
 // log_type مختلف، فمفيش تداخل بين الاتنين في أي شاشة تانية (افتقاد الفصل،
 // سجل حضور الخدام، كشف الفصل...).
-export async function recordAttendance(qrCodeStr, viewer = null, logType = 'sunday_school') {
+// طلب Mr. Gerges 2026-09-27: تسجيل حضور يدوي "ليوم قديم" — لو خادم أو
+// مخدوم اتنسي يتسجل حضوره في لقاء فات، أمين الخدمة/الخادم يقدر يسجله
+// بتاريخه الحقيقي بدل النهارده. customTimestamp اختياري: لو موجود بيستخدمه
+// بدل new Date() الحالية لكل من سجل الحضور نفسه وسجل النقاط (لو مخدوم في
+// مدارس الأحد) — نفس الرابط اللي كان موجود أصلاً بين الاتنين، بس بتاريخ
+// اختاره المستخدم مش لحظة الضغط. null (الافتراضي) يسيب السلوك زي ما كان —
+// النهارده ودلوقتي بالظبط.
+export async function recordAttendance(qrCodeStr, viewer = null, logType = 'sunday_school', customTimestamp = null) {
   if (isSupabaseConfigured()) {
     const { data: user, error: userError } = await supabase
       .from('users')
@@ -364,7 +371,7 @@ export async function recordAttendance(qrCodeStr, viewer = null, logType = 'sund
     // can hand this same timestamp back to cancelAttendance() / compare it
     // against a freshly-refetched attendance_logs row to confirm "this is
     // still the same record I just created" before undoing it.
-    const timestamp = new Date().toISOString();
+    const timestamp = customTimestamp || new Date().toISOString();
 
     const { data: attData, error: attError } = await supabase
       .from('attendance_logs')
@@ -410,7 +417,7 @@ export async function recordAttendance(qrCodeStr, viewer = null, logType = 'sund
       throw new Error('اجتماع الخدام مخصص للخدام بس، مش للمخدومين');
     }
 
-    const timestamp = new Date().toISOString();
+    const timestamp = customTimestamp || new Date().toISOString();
     const attRecord = {
       id: `att-${Date.now()}`,
       user_id: user.id,
@@ -1380,4 +1387,100 @@ export async function switchTrainingRole({ userId, role, classId } = {}) {
   db.users[idx] = { ...db.users[idx], role, class_id: role === 'super_admin' ? 'all' : classId };
   saveMockData(db);
   return db.users[idx];
+}
+
+// طلب Mr. Gerges 2026-09-27: "الفقرة الافتتاحية" — تسجيل/تحديث درجات فصل
+// (ترنيمة، قراءة إنجيل، أسئلة، هدوء) في لقاء معين، upsert على (class_id,
+// score_date). undefined لأي بند معناه "متلمسوش" (نفس نمط updateScopedStudent
+// فوق)، عشان تسجيل جزئي (بند واحد دلوقتي، الباقي بعدين) ميصفّرش اللي
+// اتسجل قبل كده. الحماية الحقيقية (فصل الخادم بس، إلا أمين الخدمة) جوه
+// record_opening_segment_score() في schema.sql.
+export async function recordOpeningSegmentScore({
+  classId, scoreDate, hymnScore, bibleReadingScore, questionsScore, quietnessScore
+} = {}, viewer = null) {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('record_opening_segment_score', {
+      p_class_id: classId,
+      p_score_date: scoreDate || new Date().toISOString().slice(0, 10),
+      p_hymn_score: hymnScore === undefined || hymnScore === '' ? null : Number(hymnScore),
+      p_bible_reading_score: bibleReadingScore === undefined || bibleReadingScore === '' ? null : Number(bibleReadingScore),
+      p_questions_score: questionsScore === undefined || questionsScore === '' ? null : Number(questionsScore),
+      p_quietness_score: quietnessScore === undefined || quietnessScore === '' ? null : Number(quietnessScore)
+    });
+    if (error) throw new Error(error.message || 'تعذر حفظ درجات الفقرة الافتتاحية');
+    return data;
+  }
+
+  const db = getMockData();
+  db.opening_segment_scores = db.opening_segment_scores || [];
+  const effectiveClassId = (viewer && viewer.role !== 'super_admin') ? viewer.class_id : classId;
+  if (!effectiveClassId) throw new Error('يجب اختيار الفصل الدراسي');
+  const date = scoreDate || new Date().toISOString().slice(0, 10);
+  let row = db.opening_segment_scores.find(r => r.class_id === effectiveClassId && r.score_date === date);
+  if (!row) {
+    row = { class_id: effectiveClassId, score_date: date, hymn_score: null, bible_reading_score: null, questions_score: null, quietness_score: null };
+    db.opening_segment_scores.push(row);
+  }
+  // نفس منطق السيرفر: فاضي/undefined بيتخزن NULL فعلاً (مش صفر ولا "سيبه
+  // زي ما هو") — الفورم دايمًا بيبعت القيم المحمّلة أصلاً لو محدش لمسها.
+  row.hymn_score = (hymnScore === undefined || hymnScore === '') ? null : Number(hymnScore);
+  row.bible_reading_score = (bibleReadingScore === undefined || bibleReadingScore === '') ? null : Number(bibleReadingScore);
+  row.questions_score = (questionsScore === undefined || questionsScore === '') ? null : Number(questionsScore);
+  row.quietness_score = (quietnessScore === undefined || quietnessScore === '') ? null : Number(quietnessScore);
+  saveMockData(db);
+  return row;
+}
+
+// درجات فصل معين في لقاء معين — بتتستخدم لما الشاشة تفتح عشان تعرض أي درجات
+// اتسجلت قبل كده لنفس اليوم بدل ما تبدأ من صفر دايمًا.
+export async function getOpeningSegmentScore({ classId, scoreDate } = {}, viewer = null) {
+  const date = scoreDate || new Date().toISOString().slice(0, 10);
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_opening_segment_score', {
+      p_class_id: classId || null,
+      p_score_date: date
+    });
+    if (error) throw new Error(error.message || 'تعذر تحميل الدرجات');
+    return (data && data[0]) || null;
+  }
+
+  const db = getMockData();
+  db.opening_segment_scores = db.opening_segment_scores || [];
+  const effectiveClassId = (viewer && viewer.role !== 'super_admin') ? viewer.class_id : classId;
+  return db.opening_segment_scores.find(r => r.class_id === effectiveClassId && r.score_date === date) || null;
+}
+
+// ترتيب الفصول (Leaderboard) بمجموع درجات الفقرة الافتتاحية — متاحة لأي
+// حساب مسجّل دخول. date اختياري: من غيره بيرجّع "الصدارة العامة" (كل
+// الدرجات من أول ما الميزة اشتغلت)، وبيه بيرجّع صدارة يوم واحد بعينه بس —
+// طلب Mr. Gerges 2026-09-27: عايز يشوف صدارة اليوم والصدارة العامة مع بعض.
+export async function getOpeningSegmentLeaderboard({ date } = {}) {
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase.rpc('get_opening_segment_leaderboard', { p_score_date: date || null });
+    if (error) throw new Error(error.message || 'تعذر تحميل ترتيب الفصول');
+    return (data || []).map(row => ({
+      ...row,
+      total_hymn: Number(row.total_hymn) || 0,
+      total_bible_reading: Number(row.total_bible_reading) || 0,
+      total_questions: Number(row.total_questions) || 0,
+      total_quietness: Number(row.total_quietness) || 0,
+      total_score: Number(row.total_score) || 0
+    }));
+  }
+
+  const db = getMockData();
+  const rows = (db.opening_segment_scores || []).filter(r => !date || r.score_date === date);
+  const byClass = {};
+  rows.forEach(r => {
+    if (!byClass[r.class_id]) {
+      byClass[r.class_id] = { class_id: r.class_id, total_hymn: 0, total_bible_reading: 0, total_questions: 0, total_quietness: 0, total_score: 0 };
+    }
+    const c = byClass[r.class_id];
+    c.total_hymn += Number(r.hymn_score) || 0;
+    c.total_bible_reading += Number(r.bible_reading_score) || 0;
+    c.total_questions += Number(r.questions_score) || 0;
+    c.total_quietness += Number(r.quietness_score) || 0;
+    c.total_score += (Number(r.hymn_score) || 0) + (Number(r.bible_reading_score) || 0) + (Number(r.questions_score) || 0) + (Number(r.quietness_score) || 0);
+  });
+  return Object.values(byClass).sort((a, b) => b.total_score - a.total_score);
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle, Search, Users, Undo2, Loader2 } from 'lucide-react';
+import { QrCode, Camera, CheckCircle, Sparkles, RefreshCw, Smartphone, AlertTriangle, Search, Users, Undo2, Loader2, CalendarClock } from 'lucide-react';
 import { recordAttendance, cancelAttendance, getManualAttendanceRoster, getAttendanceLogs, CLASSES } from '../../services/supabase';
 import { usePoints } from '../../context/PointsContext';
 import { useAuth } from '../../context/AuthContext';
@@ -12,6 +12,10 @@ import { useAuth } from '../../context/AuthContext';
 // (كانت قبل كده بتسجل بس من غير أي تراجع ولا أي إشارة لونية للي حضر
 // فعلاً).
 const PRESENT_WINDOW_DAYS = 7;
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 // Matches Navbar.jsx's role labels — بتتعرض جنب كل اسم في القائمة اليدوية.
 // أمين الخدمة العامة لسه بيشوف مخدومين وخدام مع بعض (فمحتاج كل التسميات)؛
@@ -62,6 +66,14 @@ export default function QRScanner({ onScanSuccess }) {
   // فصلها من get_manual_attendance_roster() في قاعدة البيانات).
   const [manualSearchQuery, setManualSearchQuery] = useState('');
 
+  // طلب Mr. Gerges 2026-09-27: تسجيل حضور يدوي "ليوم قديم" — بعض المرات
+  // بينسى يسجل حد سجّل حضوره فعلاً في لقاء فات. الفلتر ده بس في تبويب
+  // "تسجيل الحضور يدويًا" (مش الكاميرا الحية، اللي معناها دايمًا "دلوقتي").
+  // القيمة الافتراضية النهارده، عشان السلوك يفضل زي ما كان بالظبط لحد ما
+  // حد يغيّرها بنفسه فعلاً.
+  const [backdateDate, setBackdateDate] = useState(todayStr());
+  const isBackdating = backdateDate && backdateDate !== todayStr();
+
   // طلب Mr. Gerges 2026-09-26: سجلات الحضور عشان نعرف مين "حاضر" فعلاً
   // دلوقتي في القائمة اليدوية — نفس getAttendanceLogs() اللي كشف الفصل
   // (ClassRosterModal.jsx) بيستخدمها، ومتاحة لأي عضو طاقم (مش super_admin
@@ -102,37 +114,42 @@ export default function QRScanner({ onScanSuccess }) {
     return days < PRESENT_WINDOW_DAYS;
   };
 
-  // Process QR string
-  const handleQRProcess = async (qrString) => {
+  // Process QR string — customTimestamp (اختياري) بيسمح بتسجيل حضور بتاريخ
+  // فات بدل لحظة الضغط، من تبويب "تسجيل الحضور يدويًا" بس (الكاميرا الحية
+  // دايمًا "دلوقتي"، مبتبعتش customTimestamp خالص).
+  const handleQRProcess = async (qrString, customTimestamp = null) => {
     if (loading) return;
     setLoading(true);
     try {
       const result = await recordAttendance(
         qrString,
         currentUser ? { role: currentUser.role, class_id: currentUser.class_id } : null,
-        isMeetingMode ? 'servants_meeting' : 'sunday_school'
+        isMeetingMode ? 'servants_meeting' : 'sunday_school',
+        customTimestamp
       );
       setLastScannedUser(result.user);
       triggerRefresh();
 
+      const dateNote = customTimestamp ? ` (بتاريخ ${customTimestamp.slice(0, 10)})` : '';
+
       if (result.user.role === 'student') {
         showToast(
           'تم تسجيل الحضور وإضافة النقاط! 🎉',
-          `أهلاً بك يا ${result.user.name}. تم تسجيل حضورك وإضافة +${result.pointsAdded} نقاط لرصيدك!`,
+          `أهلاً بك يا ${result.user.name}. تم تسجيل حضورك وإضافة +${result.pointsAdded} نقاط لرصيدك!${dateNote}`,
           result.pointsAdded,
           'success'
         );
       } else if (isMeetingMode) {
         showToast(
           'تم تسجيل حضور اجتماع الخدام ⛪️',
-          `أهلاً بك يا ${result.user.name} في اجتماع الخدام!`,
+          `أهلاً بك يا ${result.user.name} في اجتماع الخدام!${dateNote}`,
           0,
           'success'
         );
       } else {
         showToast(
           'تم تسجيل حضور الخادم ⛪️',
-          `أهلاً بك يا ${result.user.name} في خدمة مدارس الأحد!`,
+          `أهلاً بك يا ${result.user.name} في خدمة مدارس الأحد!${dateNote}`,
           0,
           'success'
         );
@@ -173,7 +190,13 @@ export default function QRScanner({ onScanSuccess }) {
         const pointsNote = person.role === 'student' && !isMeetingMode ? ' وخُصمت الـ10 نقاط' : '';
         showToast('تم إلغاء الحضور ⏪', `اتلغى حضور ${person.name}${pointsNote}`, 0, 'success');
       } else {
-        await handleQRProcess(person.qr_code);
+        // renderPersonCard (واللي بينادي handleManualToggle) موجودة بس جوه
+        // تبويب "تسجيل الحضور يدويًا"، فـisBackdating هنا دايمًا بيعكس
+        // اختيار المستخدم الفعلي في الفلتر فوق. الساعة 12 ظهرًا (مش منتصف
+        // الليل) عشان اختلاف التوقيت المحلي عن UTC ميرجّعش التاريخ يوم قبل
+        // كده بالغلط لما يتعرض تاني.
+        const customTimestamp = isBackdating ? new Date(`${backdateDate}T12:00:00`).toISOString() : null;
+        await handleQRProcess(person.qr_code, customTimestamp);
       }
       const logs = await getAttendanceLogs(activeLogType);
       setAttendanceLogs(logs);
@@ -439,6 +462,28 @@ export default function QRScanner({ onScanSuccess }) {
                   : 'اختر شخص لتسجيل حضوره'}
             </h3>
             <span className="text-xs text-slate-500 font-medium">اضغط للتسجيل الفوري</span>
+          </div>
+
+          {/* طلب Mr. Gerges 2026-09-27: تسجيل حضور يدوي ليوم فات (لو حد
+              اتنسى يتسجل حضوره في لقاء قبل كده) — بتاريخ النهارده افتراضيًا
+              (يعني السلوك زي ما كان بالظبط لحد ما حد يغيّره فعلاً). مش
+              بيأثر على "إلغاء الحضور" — ده دايمًا بيتعامل مع التاريخ
+              الحقيقي المسجّل أصلاً. */}
+          <div className={`flex items-center gap-2 p-3 rounded-2xl border ${isBackdating ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+            <CalendarClock className={`w-4 h-4 shrink-0 ${isBackdating ? 'text-amber-600' : 'text-slate-400'}`} />
+            <label className="text-xs font-bold text-slate-600 shrink-0">تسجيل بتاريخ:</label>
+            <input
+              type="date"
+              value={backdateDate}
+              max={todayStr()}
+              onChange={(e) => setBackdateDate(e.target.value || todayStr())}
+              className="bg-white border border-slate-200 text-slate-900 font-bold text-xs py-1.5 px-2.5 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all"
+            />
+            {isBackdating && (
+              <span className="text-[11px] font-bold text-amber-700">
+                هيتسجل حضور بتاريخ قديم، مش النهارده ⚠️
+              </span>
+            )}
           </div>
 
           {modeScopedUsers.length === 0 ? (
