@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Music4, BookOpenText, HelpCircle, Moon, Trophy, Crown, Medal, Filter, CalendarDays, Save, Loader2, CalendarCheck } from 'lucide-react';
+import { Music4, BookOpenText, HelpCircle, Moon, Users, Trophy, Crown, Medal, Filter, CalendarDays, Save, Loader2, CalendarCheck } from 'lucide-react';
 import { recordOpeningSegmentScore, getOpeningSegmentScore, getOpeningSegmentLeaderboard, CLASSES } from '../../services/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
@@ -43,6 +43,9 @@ export default function OpeningSegmentScores() {
   const [bibleReadingScore, setBibleReadingScore] = useState('');
   const [questionsScore, setQuestionsScore] = useState('');
   const [quietnessScore, setQuietnessScore] = useState('');
+  // طلب Mr. Gerges 2026-10-05: عدد الخدام الحاضرين في الفصل — كل خادم بـ 5 نقاط
+  const [servantsCount, setServantsCount] = useState('');
+  const SERVANT_POINTS = 5;
   const [loadingForm, setLoadingForm] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -65,10 +68,11 @@ export default function OpeningSegmentScores() {
         setBibleReadingScore(toFieldValue(row?.bible_reading_score));
         setQuestionsScore(toFieldValue(row?.questions_score));
         setQuietnessScore(toFieldValue(row?.quietness_score));
+        setServantsCount(toFieldValue(row?.servants_count));
       })
       .catch(() => {
         if (isMounted) {
-          setHymnScore(''); setBibleReadingScore(''); setQuestionsScore(''); setQuietnessScore('');
+          setHymnScore(''); setBibleReadingScore(''); setQuestionsScore(''); setQuietnessScore(''); setServantsCount('');
         }
       })
       .finally(() => { if (isMounted) setLoadingForm(false); });
@@ -108,6 +112,7 @@ export default function OpeningSegmentScores() {
       total_bible_reading: row?.total_bible_reading || 0,
       total_questions: row?.total_questions || 0,
       total_quietness: row?.total_quietness || 0,
+      total_servants: row?.total_servants || 0,
       total_score: row?.total_score || 0
     };
   }).sort((a, b) => b.total_score - a.total_score);
@@ -126,7 +131,8 @@ export default function OpeningSegmentScores() {
         hymnScore,
         bibleReadingScore,
         questionsScore,
-        quietnessScore
+        quietnessScore,
+        servantsCount
       }, viewer);
       triggerRefresh();
       showToast('تم الحفظ 🎶', `درجات الفقرة الافتتاحية لفصل "${currentClassInfo.name}" اتحدثت`, 0, 'success');
@@ -193,7 +199,7 @@ export default function OpeningSegmentScores() {
         </div>
 
         <p className="text-[11px] text-slate-500 font-medium -mt-2">
-          سيب أي بند فاضي لو الفقرة دي اتلغت في اللقاء ده — مش هيتحسب صفر، هيتحسب "متعملتش".
+          سيب أي بند فاضي لو الفقرة دي اتلغت في اللقاء ده — مش هيتحسب صفر، هيتحسب "متعملتش". ولو عايز تخصم نقاط من الفصل (مثلاً بسبب كتر الكلام) اكتب الرقم بالسالب زي -3.
         </p>
 
         {loadingForm ? (
@@ -205,7 +211,7 @@ export default function OpeningSegmentScores() {
                 <Music4 className="w-4 h-4 text-indigo-500" /> الترنيمة
               </label>
               <input
-                type="number" min="0" placeholder="لم تُقم" value={hymnScore}
+                type="number" step="1" inputMode="numeric" dir="ltr" placeholder="لم تُقم" value={hymnScore}
                 onChange={(e) => setHymnScore(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none font-black text-center text-sm transition-all"
               />
@@ -215,7 +221,7 @@ export default function OpeningSegmentScores() {
                 <BookOpenText className="w-4 h-4 text-emerald-600" /> قراءة الإنجيل
               </label>
               <input
-                type="number" min="0" placeholder="لم تُقم" value={bibleReadingScore}
+                type="number" step="1" inputMode="numeric" dir="ltr" placeholder="لم تُقم" value={bibleReadingScore}
                 onChange={(e) => setBibleReadingScore(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none font-black text-center text-sm transition-all"
               />
@@ -225,7 +231,7 @@ export default function OpeningSegmentScores() {
                 <HelpCircle className="w-4 h-4 text-amber-500" /> الأسئلة
               </label>
               <input
-                type="number" min="0" placeholder="لم تُقم" value={questionsScore}
+                type="number" step="1" inputMode="numeric" dir="ltr" placeholder="لم تُقم" value={questionsScore}
                 onChange={(e) => setQuestionsScore(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none font-black text-center text-sm transition-all"
               />
@@ -235,10 +241,26 @@ export default function OpeningSegmentScores() {
                 <Moon className="w-4 h-4 text-slate-500" /> الهدوء
               </label>
               <input
-                type="number" min="0" placeholder="لم تُقم" value={quietnessScore}
+                type="number" step="1" inputMode="numeric" dir="ltr" placeholder="لم تُقم" value={quietnessScore}
                 onChange={(e) => setQuietnessScore(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none font-black text-center text-sm transition-all"
               />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="flex items-center gap-1.5 text-xs font-extrabold text-slate-700 mb-1.5">
+                <Users className="w-4 h-4 text-sky-600" /> عدد الخدام (كل خادم = {SERVANT_POINTS} نقاط)
+              </label>
+              <input
+                type="number" min="0" step="1" inputMode="numeric" dir="ltr" placeholder="لم يُسجَّل"
+                value={servantsCount}
+                onChange={(e) => setServantsCount(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none font-black text-center text-sm transition-all"
+              />
+              {servantsCount !== '' && Number(servantsCount) >= 0 && (
+                <p className="text-[11px] text-sky-700 font-bold mt-1.5 text-center">
+                  {Number(servantsCount)} × {SERVANT_POINTS} = {Number(servantsCount) * SERVANT_POINTS} نقطة للفصل
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -331,13 +353,13 @@ export default function OpeningSegmentScores() {
                     <div className="min-w-0">
                       <h4 className="font-extrabold text-slate-900 text-sm truncate">{c.name}</h4>
                       <p className="text-[11px] text-slate-500 font-medium truncate">
-                        🎵{c.total_hymn} · 📖{c.total_bible_reading} · ❓{c.total_questions} · 🤫{c.total_quietness}
+                        <span dir="ltr" className="inline-block">🎵{c.total_hymn} · 📖{c.total_bible_reading} · ❓{c.total_questions} · 🤫{c.total_quietness} · 👥{c.total_servants}</span>
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1.5 bg-amber-500 text-slate-950 font-black px-4 py-2 rounded-2xl shadow-sm border border-amber-400 shrink-0">
-                    <span className="text-base">{c.total_score}</span>
+                    <span className="text-base" dir="ltr">{c.total_score}</span>
                     <span className="text-xs font-normal">نقطة</span>
                   </div>
                 </div>

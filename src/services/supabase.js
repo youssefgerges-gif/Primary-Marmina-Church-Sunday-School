@@ -1396,7 +1396,7 @@ export async function switchTrainingRole({ userId, role, classId } = {}) {
 // اتسجل قبل كده. الحماية الحقيقية (فصل الخادم بس، إلا أمين الخدمة) جوه
 // record_opening_segment_score() في schema.sql.
 export async function recordOpeningSegmentScore({
-  classId, scoreDate, hymnScore, bibleReadingScore, questionsScore, quietnessScore
+  classId, scoreDate, hymnScore, bibleReadingScore, questionsScore, quietnessScore, servantsCount
 } = {}, viewer = null) {
   if (isSupabaseConfigured()) {
     const { data, error } = await supabase.rpc('record_opening_segment_score', {
@@ -1405,7 +1405,8 @@ export async function recordOpeningSegmentScore({
       p_hymn_score: hymnScore === undefined || hymnScore === '' ? null : Number(hymnScore),
       p_bible_reading_score: bibleReadingScore === undefined || bibleReadingScore === '' ? null : Number(bibleReadingScore),
       p_questions_score: questionsScore === undefined || questionsScore === '' ? null : Number(questionsScore),
-      p_quietness_score: quietnessScore === undefined || quietnessScore === '' ? null : Number(quietnessScore)
+      p_quietness_score: quietnessScore === undefined || quietnessScore === '' ? null : Number(quietnessScore),
+      p_servants_count: servantsCount === undefined || servantsCount === '' ? null : Number(servantsCount)
     });
     if (error) throw new Error(error.message || 'تعذر حفظ درجات الفقرة الافتتاحية');
     return data;
@@ -1418,7 +1419,7 @@ export async function recordOpeningSegmentScore({
   const date = scoreDate || new Date().toISOString().slice(0, 10);
   let row = db.opening_segment_scores.find(r => r.class_id === effectiveClassId && r.score_date === date);
   if (!row) {
-    row = { class_id: effectiveClassId, score_date: date, hymn_score: null, bible_reading_score: null, questions_score: null, quietness_score: null };
+    row = { class_id: effectiveClassId, score_date: date, hymn_score: null, bible_reading_score: null, questions_score: null, quietness_score: null, servants_count: null };
     db.opening_segment_scores.push(row);
   }
   // نفس منطق السيرفر: فاضي/undefined بيتخزن NULL فعلاً (مش صفر ولا "سيبه
@@ -1427,6 +1428,7 @@ export async function recordOpeningSegmentScore({
   row.bible_reading_score = (bibleReadingScore === undefined || bibleReadingScore === '') ? null : Number(bibleReadingScore);
   row.questions_score = (questionsScore === undefined || questionsScore === '') ? null : Number(questionsScore);
   row.quietness_score = (quietnessScore === undefined || quietnessScore === '') ? null : Number(quietnessScore);
+  row.servants_count = (servantsCount === undefined || servantsCount === '') ? null : Number(servantsCount);
   saveMockData(db);
   return row;
 }
@@ -1464,6 +1466,7 @@ export async function getOpeningSegmentLeaderboard({ date } = {}) {
       total_bible_reading: Number(row.total_bible_reading) || 0,
       total_questions: Number(row.total_questions) || 0,
       total_quietness: Number(row.total_quietness) || 0,
+      total_servants: Number(row.total_servants) || 0,
       total_score: Number(row.total_score) || 0
     }));
   }
@@ -1473,14 +1476,16 @@ export async function getOpeningSegmentLeaderboard({ date } = {}) {
   const byClass = {};
   rows.forEach(r => {
     if (!byClass[r.class_id]) {
-      byClass[r.class_id] = { class_id: r.class_id, total_hymn: 0, total_bible_reading: 0, total_questions: 0, total_quietness: 0, total_score: 0 };
+      byClass[r.class_id] = { class_id: r.class_id, total_hymn: 0, total_bible_reading: 0, total_questions: 0, total_quietness: 0, total_servants: 0, total_score: 0 };
     }
     const c = byClass[r.class_id];
     c.total_hymn += Number(r.hymn_score) || 0;
     c.total_bible_reading += Number(r.bible_reading_score) || 0;
     c.total_questions += Number(r.questions_score) || 0;
     c.total_quietness += Number(r.quietness_score) || 0;
-    c.total_score += (Number(r.hymn_score) || 0) + (Number(r.bible_reading_score) || 0) + (Number(r.questions_score) || 0) + (Number(r.quietness_score) || 0);
+    // كل خادم = 5 نقاط
+    c.total_servants += (Number(r.servants_count) || 0) * 5;
+    c.total_score += (Number(r.hymn_score) || 0) + (Number(r.bible_reading_score) || 0) + (Number(r.questions_score) || 0) + (Number(r.quietness_score) || 0) + (Number(r.servants_count) || 0) * 5;
   });
   return Object.values(byClass).sort((a, b) => b.total_score - a.total_score);
 }

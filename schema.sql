@@ -1407,10 +1407,11 @@ CREATE TABLE IF NOT EXISTS public.opening_segment_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   class_id TEXT NOT NULL,
   score_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  hymn_score INTEGER CHECK (hymn_score IS NULL OR hymn_score >= 0),
-  bible_reading_score INTEGER CHECK (bible_reading_score IS NULL OR bible_reading_score >= 0),
-  questions_score INTEGER CHECK (questions_score IS NULL OR questions_score >= 0),
-  quietness_score INTEGER CHECK (quietness_score IS NULL OR quietness_score >= 0),
+  hymn_score INTEGER,
+  bible_reading_score INTEGER,
+  questions_score INTEGER,
+  quietness_score INTEGER,
+  servants_count INTEGER CHECK (servants_count IS NULL OR servants_count >= 0),
   updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -1433,13 +1434,19 @@ ALTER TABLE public.opening_segment_scores ALTER COLUMN questions_score DROP DEFA
 ALTER TABLE public.opening_segment_scores ALTER COLUMN quietness_score DROP NOT NULL;
 ALTER TABLE public.opening_segment_scores ALTER COLUMN quietness_score DROP DEFAULT;
 ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_hymn_score_check;
-ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_hymn_score_check CHECK (hymn_score IS NULL OR hymn_score >= 0);
 ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_bible_reading_score_check;
-ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_bible_reading_score_check CHECK (bible_reading_score IS NULL OR bible_reading_score >= 0);
 ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_questions_score_check;
-ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_questions_score_check CHECK (questions_score IS NULL OR questions_score >= 0);
 ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_quietness_score_check;
-ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_quietness_score_check CHECK (quietness_score IS NULL OR quietness_score >= 0);
+
+-- طلب Mr. Gerges 2026-10-05: درجات الفقرة الافتتاحية تقبل قيم سالبة (خصم) —
+-- الـCHECK (>= 0) اتشال (DROP CONSTRAINT فوق بيشيله من أي قاعدة بيانات قديمة).
+
+-- طلب Mr. Gerges 2026-10-05: بند جديد "عدد الخدام" — كل خادم حاضر في الفصل
+-- بـ 5 نقاط (عدد الخدام × 5 بيتحسب في الدوال تحت، العمود بيخزّن العدد نفسه
+-- مش النقاط). NULLable زي باقي البنود (فاضي = متسجلش)، ومن غير سالب.
+ALTER TABLE public.opening_segment_scores ADD COLUMN IF NOT EXISTS servants_count INTEGER;
+ALTER TABLE public.opening_segment_scores DROP CONSTRAINT IF EXISTS opening_segment_scores_servants_count_check;
+ALTER TABLE public.opening_segment_scores ADD CONSTRAINT opening_segment_scores_servants_count_check CHECK (servants_count IS NULL OR servants_count >= 0);
 
 ALTER TABLE public.opening_segment_scores ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Opening Segment Access" ON public.opening_segment_scores;
@@ -1452,13 +1459,16 @@ CREATE POLICY "Public Opening Segment Access" ON public.opening_segment_scores F
 -- الباقي بيتبعت زي ما كان محفوظ أصلاً (مش بيتمسح). أي خادم/أمين فصل/مساعد
 -- بيتفرض عليه فصله هو بس (بيتجاهل أي class_id متبعت)، وأمين الخدمة العامة
 -- لازم يختار الفصل.
+DROP FUNCTION IF EXISTS public.record_opening_segment_score(TEXT, DATE, INTEGER, INTEGER, INTEGER, INTEGER);
+
 CREATE OR REPLACE FUNCTION public.record_opening_segment_score(
   p_class_id TEXT,
   p_score_date DATE DEFAULT CURRENT_DATE,
   p_hymn_score INTEGER DEFAULT NULL,
   p_bible_reading_score INTEGER DEFAULT NULL,
   p_questions_score INTEGER DEFAULT NULL,
-  p_quietness_score INTEGER DEFAULT NULL
+  p_quietness_score INTEGER DEFAULT NULL,
+  p_servants_count INTEGER DEFAULT NULL
 )
 RETURNS public.opening_segment_scores
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -1484,12 +1494,16 @@ BEGIN
 
   v_score_date := COALESCE(p_score_date, CURRENT_DATE);
 
+  IF p_servants_count IS NOT NULL AND p_servants_count < 0 THEN
+    RAISE EXCEPTION 'عدد الخدام لا يمكن أن يكون سالباً';
+  END IF;
+
   INSERT INTO public.opening_segment_scores (
-    class_id, score_date, hymn_score, bible_reading_score, questions_score, quietness_score, updated_by
+    class_id, score_date, hymn_score, bible_reading_score, questions_score, quietness_score, servants_count, updated_by
   )
   VALUES (
     v_class_id, v_score_date,
-    p_hymn_score, p_bible_reading_score, p_questions_score, p_quietness_score,
+    p_hymn_score, p_bible_reading_score, p_questions_score, p_quietness_score, p_servants_count,
     public.current_user_id()
   )
   ON CONFLICT (class_id, score_date) DO UPDATE SET
@@ -1497,6 +1511,7 @@ BEGIN
     bible_reading_score = p_bible_reading_score,
     questions_score = p_questions_score,
     quietness_score = p_quietness_score,
+    servants_count = p_servants_count,
     updated_by = public.current_user_id(),
     updated_at = NOW()
   RETURNING * INTO v_row;
@@ -1505,13 +1520,15 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.record_opening_segment_score(TEXT, DATE, INTEGER, INTEGER, INTEGER, INTEGER) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.record_opening_segment_score(TEXT, DATE, INTEGER, INTEGER, INTEGER, INTEGER) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.record_opening_segment_score(TEXT, DATE, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.record_opening_segment_score(TEXT, DATE, INTEGER, INTEGER, INTEGER, INTEGER, INTEGER) TO authenticated;
 
 -- درجات فصل معين في لقاء معين (للفورم — عشان لما الخادم يفتح الشاشة يلاقي
 -- الدرجات اللي اتسجلت النهارده لو أي حد سجل حاجة قبل كده، مش يبدأ من صفر
 -- كل مرة). نفس منطق الصلاحية والفصل اللي في record_opening_segment_score
 -- فوق بالظبط.
+DROP FUNCTION IF EXISTS public.get_opening_segment_score(TEXT, DATE);
+
 CREATE OR REPLACE FUNCTION public.get_opening_segment_score(
   p_class_id TEXT DEFAULT NULL,
   p_score_date DATE DEFAULT CURRENT_DATE
@@ -1522,7 +1539,8 @@ RETURNS TABLE (
   hymn_score INTEGER,
   bible_reading_score INTEGER,
   questions_score INTEGER,
-  quietness_score INTEGER
+  quietness_score INTEGER,
+  servants_count INTEGER
 )
 LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
 DECLARE
@@ -1544,7 +1562,7 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  SELECT o.class_id, o.score_date, o.hymn_score, o.bible_reading_score, o.questions_score, o.quietness_score
+  SELECT o.class_id, o.score_date, o.hymn_score, o.bible_reading_score, o.questions_score, o.quietness_score, o.servants_count
   FROM public.opening_segment_scores o
   WHERE o.class_id = v_class_id AND o.score_date = COALESCE(p_score_date, CURRENT_DATE);
 END;
@@ -1561,6 +1579,7 @@ GRANT EXECUTE ON FUNCTION public.get_opening_segment_score(TEXT, DATE) TO authen
 -- تبان روح التنافس للكل، مش بس للخدام. التوقيع اتغيّر (باراميتر جديد)
 -- فلازم DROP صريح للنسخة القديمة من غير باراميترات.
 DROP FUNCTION IF EXISTS public.get_opening_segment_leaderboard();
+DROP FUNCTION IF EXISTS public.get_opening_segment_leaderboard(DATE);
 
 CREATE OR REPLACE FUNCTION public.get_opening_segment_leaderboard(p_score_date DATE DEFAULT NULL)
 RETURNS TABLE (
@@ -1569,6 +1588,7 @@ RETURNS TABLE (
   total_bible_reading NUMERIC,
   total_questions NUMERIC,
   total_quietness NUMERIC,
+  total_servants NUMERIC,
   total_score NUMERIC
 )
 LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public AS $$
@@ -1592,9 +1612,12 @@ BEGIN
     COALESCE(SUM(o.bible_reading_score), 0)::NUMERIC AS total_bible_reading,
     COALESCE(SUM(o.questions_score), 0)::NUMERIC AS total_questions,
     COALESCE(SUM(o.quietness_score), 0)::NUMERIC AS total_quietness,
+    -- كل خادم = 5 نقاط (طلب Mr. Gerges 2026-10-05)
+    (COALESCE(SUM(o.servants_count), 0) * 5)::NUMERIC AS total_servants,
     COALESCE(SUM(
       COALESCE(o.hymn_score, 0) + COALESCE(o.bible_reading_score, 0) +
-      COALESCE(o.questions_score, 0) + COALESCE(o.quietness_score, 0)
+      COALESCE(o.questions_score, 0) + COALESCE(o.quietness_score, 0) +
+      COALESCE(o.servants_count, 0) * 5
     ), 0)::NUMERIC AS total_score
   FROM public.opening_segment_scores o
   WHERE p_score_date IS NULL OR o.score_date = p_score_date
