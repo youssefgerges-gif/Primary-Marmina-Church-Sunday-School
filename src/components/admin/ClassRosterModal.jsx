@@ -12,11 +12,14 @@ const ROLE_LABELS = {
   servant: 'خادم'
 };
 
-// "حاضر" here means: attended within the last 7 days (same rolling window
-// getServiceStats() in supabase.js already uses for its own weekly
-// attendance-rate calculation) — matches a weekly Sunday-meeting rhythm
-// without needing a separate "which week is this" concept.
-const PRESENT_WINDOW_DAYS = 7;
+// "حاضر" here means: attended TODAY (local calendar day). طلب Mr. Gerges
+// 2026-10-09 (تصحيح): كان "خلال آخر 7 أيام"، وده كان بيخلي كل اللي اتسجل
+// حضورهم في لقاء الأسبوع اللي فات يظهروا "حاضر" في لقاء النهارده قبل ما
+// حد يتسجل. دلوقتي بيتقارن بتاريخ اليوم (بتوقيت الجهاز مش UTC).
+function localDateStr(d) {
+  const x = d instanceof Date ? d : new Date(d);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+}
 
 export default function ClassRosterModal({ isOpen, onClose, classInfo, users, attendanceLogs }) {
   const { showToast, triggerRefresh } = usePoints();
@@ -35,8 +38,8 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
   // شوية عايز يصحح غلطة، الصف كان بيتقفل خالص. دلوقتي أي صف "حاضر" ممكن
   // تدوس عليه تاني وقت ما تيجي، مش بس أول دوسة — لأن الـid الحقيقي بتاع آخر
   // سجل حضور بييجي من قاعدة البيانات (lastAttendedMap تحت) مش من حالة محلية
-  // بتتصفر أول ما تقفل الشاشة. ده آمن برضو: "حاضر" أصلاً معناها "حضر خلال
-  // آخر 7 أيام" (PRESENT_WINDOW_DAYS تحت)، فمستحيل تلغي غلط سجل حضور حقيقي
+  // بتتصفر أول ما تقفل الشاشة. ده آمن برضو: "حاضر" أصلاً معناها "حضر
+  // النهارده" (حضر النهارده بس)، فمستحيل تلغي غلط سجل حضور حقيقي
   // أقدم من أسبوع — هو أصلاً مش هيبان "حاضر" لو كان كذلك.
   const lastAttendedMap = useMemo(() => {
     const map = new Map();
@@ -53,8 +56,7 @@ export default function ClassRosterModal({ isOpen, onClose, classInfo, users, at
   const isPresent = (userId) => {
     const last = lastAttendedMap.get(userId);
     if (!last) return false;
-    const days = (new Date() - last.date) / (1000 * 60 * 60 * 24);
-    return days < PRESENT_WINDOW_DAYS;
+    return localDateStr(last.date) === localDateStr(new Date());
   };
 
   // نص بسيط زي "النهاردة"/"إمبارح"/"من 3 أيام" تحت أي حد "حاضر" — عشان لما
