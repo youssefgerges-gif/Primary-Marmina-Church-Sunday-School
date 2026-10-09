@@ -11,10 +11,27 @@ import { useAuth } from '../../context/AuthContext';
 // وتنوّر الاسم أخضر، وتكة تانية على نفس الاسم تلغي الحضور وتخصم النقط
 // (كانت قبل كده بتسجل بس من غير أي تراجع ولا أي إشارة لونية للي حضر
 // فعلاً).
-const PRESENT_WINDOW_DAYS = 7;
+//
+// طلب Mr. Gerges 2026-10-09 (تصحيح): "حاضر" في القائمة اليدوية بقت معناها
+// "ليه حضور في نفس اليوم المختار" (النهارده افتراضيًا، أو التاريخ اللي اختاره
+// في فلتر "تسجيل بتاريخ")، مش "خلال آخر 7 أيام". المعنى القديم كان بيخلي
+// كل اللي اتسجل حضورهم الأسبوع اللي فات يظهروا خضر ومتسجلين النهارده كمان
+// (لأن لقاء الأسبوع اللي فات أقل من 7×24 ساعة)، فمحدش كان يعرف يسجل حد
+// جديد. كشف الفصل (ClassRosterModal) لسه على معنى "آخر 7 أيام" لأنه ملخص
+// أسبوعي، ده مش بيتأثر.
+
+// تاريخ "محلي" YYYY-MM-DD (مش UTC) — علشان يوم الخدمة بتاع المستخدم هو اللي
+// يتقارن بيه، من غير ما فرق التوقيت يزحزح اليوم.
+function localDateStr(d) {
+  const x = d instanceof Date ? d : new Date(d);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr(new Date());
 }
 
 // Matches Navbar.jsx's role labels — بتتعرض جنب كل اسم في القائمة اليدوية.
@@ -95,9 +112,12 @@ export default function QRScanner({ onScanSuccess }) {
       .catch(() => setAttendanceLogs([]));
   }, [currentUser?.role, currentUser?.class_id, refreshKey, activeLogType]);
 
+  // آخر سجل حضور لكل شخص في اليوم المختار بس (selectedDay).
+  const selectedDay = backdateDate || todayStr();
   const lastAttendedMap = useMemo(() => {
     const map = new Map();
     (attendanceLogs || []).forEach(log => {
+      if (localDateStr(log.timestamp) !== selectedDay) return;
       const t = new Date(log.timestamp);
       const prev = map.get(log.user_id);
       if (!prev || t > prev.date) {
@@ -105,14 +125,9 @@ export default function QRScanner({ onScanSuccess }) {
       }
     });
     return map;
-  }, [attendanceLogs]);
+  }, [attendanceLogs, selectedDay]);
 
-  const isPresent = (userId) => {
-    const last = lastAttendedMap.get(userId);
-    if (!last) return false;
-    const days = (new Date() - last.date) / (1000 * 60 * 60 * 24);
-    return days < PRESENT_WINDOW_DAYS;
-  };
+  const isPresent = (userId) => lastAttendedMap.has(userId);
 
   // Process QR string — customTimestamp (اختياري) بيسمح بتسجيل حضور بتاريخ
   // فات بدل لحظة الضغط، من تبويب "تسجيل الحضور يدويًا" بس (الكاميرا الحية
@@ -175,7 +190,7 @@ export default function QRScanner({ onScanSuccess }) {
   const handleManualToggle = async (person) => {
     if (loading || togglingId) return;
     const last = lastAttendedMap.get(person.id);
-    const present = !!last && (new Date() - last.date) / (1000 * 60 * 60 * 24) < PRESENT_WINDOW_DAYS;
+    const present = !!last;
 
     setTogglingId(person.id);
     try {
