@@ -1298,20 +1298,32 @@ GRANT EXECUTE ON FUNCTION public.get_servant_meeting_attendance_log() TO authent
 -- p_clear_birth_date هي الإشارة الصريحة لمسحه (نفس نمط update_scoped_
 -- student() فوق). التوقيع اتغيّر (باراميترز جداد) فلازم DROP صريح للنسخة
 -- القديمة الأقصر.
+--
+-- طلب Mr. Gerges 2026-10-14: الخدام (أي دور غير المخدوم: خادم / أمين فصل /
+-- أمين فصل مساعد / أمين خدمة) يقدروا يعدّلوا اسمهم بنفسهم من "بياناتي".
+-- p_name باراميتر جديد (التوقيع اتغيّر، فلازم DROP صريح للنسخة القديمة).
+-- NULL = متلمسش الاسم؛ الاسم الفاضي مرفوض (الاسم مينفعش يتمسح). المخدوم
+-- لسه ممنوع يغيّر اسمه (سيرفر سايد، مش بس إخفاء الحقل في الواجهة). الدور
+-- والفصل وكود الدخول وكود الـQR لسه حصريين لأمين الخدمة — كود الدخول
+-- (username) وكود الـQR مش بيتأثروا بتغيير الاسم خالص.
 -- ========================================================
 DROP FUNCTION IF EXISTS public.update_own_profile(TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.update_own_profile(TEXT, TEXT, TEXT, DATE, BOOLEAN);
 
 CREATE OR REPLACE FUNCTION public.update_own_profile(
   p_phone TEXT DEFAULT NULL,
   p_address TEXT DEFAULT NULL,
   p_guardian_phone TEXT DEFAULT NULL,
   p_birth_date DATE DEFAULT NULL,
-  p_clear_birth_date BOOLEAN DEFAULT FALSE
+  p_clear_birth_date BOOLEAN DEFAULT FALSE,
+  p_name TEXT DEFAULT NULL
 )
 RETURNS public.users
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_id UUID;
+  v_role TEXT;
+  v_name TEXT;
   v_row public.users%ROWTYPE;
 BEGIN
   v_id := public.current_user_id();
@@ -1319,8 +1331,24 @@ BEGIN
     RAISE EXCEPTION 'غير مسجل دخول';
   END IF;
 
+  v_name := NULL;
+  IF p_name IS NOT NULL THEN
+    v_role := public.current_user_role();
+    IF v_role IS NULL OR v_role = 'student' THEN
+      RAISE EXCEPTION 'تعديل الاسم متاح للخدام فقط';
+    END IF;
+    v_name := regexp_replace(TRIM(p_name), '\s+', ' ', 'g');
+    IF v_name = '' THEN
+      RAISE EXCEPTION 'الاسم مطلوب ولا يمكن أن يكون فارغاً';
+    END IF;
+    IF char_length(v_name) > 100 THEN
+      RAISE EXCEPTION 'الاسم طويل جداً (الحد الأقصى 100 حرف)';
+    END IF;
+  END IF;
+
   UPDATE public.users
   SET
+    name = COALESCE(v_name, name),
     phone = CASE WHEN p_phone IS NOT NULL THEN NULLIF(TRIM(p_phone), '') ELSE phone END,
     address = CASE WHEN p_address IS NOT NULL THEN NULLIF(TRIM(p_address), '') ELSE address END,
     guardian_phone = CASE WHEN p_guardian_phone IS NOT NULL THEN NULLIF(TRIM(p_guardian_phone), '') ELSE guardian_phone END,
@@ -1340,8 +1368,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT, DATE, BOOLEAN) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT, DATE, BOOLEAN) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT, DATE, BOOLEAN, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.update_own_profile(TEXT, TEXT, TEXT, DATE, BOOLEAN, TEXT) TO authenticated;
 
 -- ========================================================
 -- SWITCH TRAINING ROLE (حساب التدريب — تبديل الدور بنفسه) — طلب Mr. Gerges

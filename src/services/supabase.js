@@ -1339,14 +1339,18 @@ export async function getMyProfile(authUserId) {
 // دور) يقدر يدخل عيد ميلاده بنفسه، مش بس المخدوم. تاريخ الميلاد نوعه DATE
 // في قاعدة البيانات، فمفيش "نص فاضي" يمسحه — clearBirthDate صراحةً هي اللي
 // بتمسحه (شوف update_own_profile() في schema.sql).
-export async function updateOwnProfile({ userId, phone, address, guardianPhone, birthDate, clearBirthDate } = {}) {
+// طلب Mr. Gerges 2026-10-14: name — الخدام (مش المخدوم) يقدروا يعدّلوا اسمهم
+// بنفسهم؛ undefined/null = متلمسوش. الرفض للمخدوم والاسم الفاضي سيرفر سايد
+// في update_own_profile().
+export async function updateOwnProfile({ userId, name, phone, address, guardianPhone, birthDate, clearBirthDate } = {}) {
   if (isSupabaseConfigured()) {
     const { data, error } = await supabase.rpc('update_own_profile', {
       p_phone: phone ?? null,
       p_address: address ?? null,
       p_guardian_phone: guardianPhone ?? null,
       p_birth_date: birthDate || null,
-      p_clear_birth_date: !!clearBirthDate
+      p_clear_birth_date: !!clearBirthDate,
+      p_name: name ?? null
     });
     if (error) throw new Error(error.message || 'تعذر حفظ البيانات');
     return data;
@@ -1356,6 +1360,12 @@ export async function updateOwnProfile({ userId, phone, address, guardianPhone, 
   const idx = db.users.findIndex(u => u.id === userId);
   if (idx === -1) throw new Error('الحساب غير موجود');
   const updated = { ...db.users[idx] };
+  if (name !== undefined && name !== null) {
+    const cleanName = String(name).trim().replace(/\s+/g, ' ');
+    if (db.users[idx].role === 'student') throw new Error('تعديل الاسم متاح للخدام فقط');
+    if (!cleanName) throw new Error('الاسم مطلوب ولا يمكن أن يكون فارغاً');
+    updated.name = cleanName;
+  }
   if (phone !== undefined && phone !== null) updated.phone = String(phone).trim() || null;
   if (address !== undefined && address !== null) updated.address = String(address).trim() || null;
   if (guardianPhone !== undefined && guardianPhone !== null) updated.guardian_phone = String(guardianPhone).trim() || null;

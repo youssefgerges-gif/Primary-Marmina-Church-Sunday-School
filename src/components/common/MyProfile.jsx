@@ -27,6 +27,8 @@ export default function MyProfile() {
     ? CLASSES.find(c => c.id === currentUser.class_id)?.name
     : null;
 
+  // طلب Mr. Gerges 2026-10-14: الخدام (أي دور غير المخدوم) يعدّلوا اسمهم بنفسهم.
+  const [name, setName] = useState(currentUser?.name || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [address, setAddress] = useState(currentUser?.address || '');
   const [guardianPhone, setGuardianPhone] = useState(currentUser?.guardian_phone || '');
@@ -46,10 +48,15 @@ export default function MyProfile() {
   if (!currentUser) return null;
 
   const handleSave = async () => {
+    if (!isStudent && !name.trim()) {
+      showToast('خطأ', 'الاسم مطلوب ولا يمكن تركه فاضي', 0, 'error');
+      return;
+    }
     setSaving(true);
     try {
       await updateOwnProfile({
         userId: currentUser.id,
+        name: isStudent ? null : name.trim(),
         phone,
         address: isStudent ? address : null,
         guardianPhone: isStudent ? guardianPhone : null,
@@ -93,7 +100,7 @@ export default function MyProfile() {
           </div>
           <div>
             <h2 className="text-xl font-extrabold text-white">بياناتي</h2>
-            <p className="text-sky-100 text-xs mt-1">بياناتك الأساسية — تقدر تعدّل رقم تليفونك من هنا بنفسك</p>
+            <p className="text-sky-100 text-xs mt-1">بياناتك الأساسية — تقدر تعدّل {isStudent ? 'رقم تليفونك' : 'اسمك ورقم تليفونك'} من هنا بنفسك</p>
           </div>
         </div>
       </div>
@@ -127,6 +134,21 @@ export default function MyProfile() {
         <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
           <Phone className="w-4 h-4 text-sky-600" /> بيانات التواصل
         </h3>
+
+        {!isStudent && (
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 flex items-center gap-1.5">
+              <UserCircle2 className="w-3.5 h-3.5" /> الاسم
+            </label>
+            <input
+              type="text"
+              value={name}
+              maxLength={100}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none font-bold text-sm transition-all"
+            />
+          </div>
+        )}
 
         <div>
           <label className="block text-xs font-bold text-slate-500 mb-1.5">رقم التليفون</label>
