@@ -18,6 +18,7 @@ import ManualPointsTool from './components/servant/ManualPointsTool';
 import AddStudentTool from './components/servant/AddStudentTool';
 import StudentQRDirectory from './components/servant/StudentQRDirectory';
 import OpeningSegmentScores from './components/servant/OpeningSegmentScores';
+import StudentBirthdays from './components/servant/StudentBirthdays';
 
 // Admin Components
 import Analytics from './components/admin/Analytics';
@@ -174,14 +175,26 @@ function MainContent() {
                 الفصول/المساعدين/الخدام شايفينها، وبما إنه مش مقفول على فصل
                 معين، هيشوف كل الفصول في تبويب التسجيل اليدوي (get_manual_
                 attendance_roster() في schema.sql بترجع الكل لـ super_admin). */}
-            {activeTab === 'scanner' && <QRScanner />}
+            {activeTab === 'scanner' && (
+              <>
+                {/* طلب Mr. Gerges 2026-10-23: أعياد ميلاد المخدومين لكل الخدام */}
+                <StudentBirthdays />
+                <QRScanner />
+              </>
+            )}
           </>
         )}
 
         {/* CLASS ADMIN / ASSISTANT ADMIN / SERVANT (أمين الفصل / أمين مساعد / خادم) */}
         {(role === 'class_admin' || role === 'assistant_admin' || role === 'servant') && (
           <>
-            {activeTab === 'scanner' && <QRScanner />}
+            {activeTab === 'scanner' && (
+              <>
+                {/* طلب Mr. Gerges 2026-10-23: أعياد ميلاد المخدومين لكل الخدام */}
+                <StudentBirthdays />
+                <QRScanner />
+              </>
+            )}
             {activeTab === 'servant-leaderboard' && <ClassLeaderboard />}
             {activeTab === 'servant-manual-points' && <ManualPointsTool />}
             {/* طلب 2026-09-20: إضافة مخدوم بقت متاحة للتلاتة أدوار دول
