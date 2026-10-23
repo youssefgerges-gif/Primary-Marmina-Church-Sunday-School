@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Shield, User, UserPlus, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut, BarChart3, CreditCard, UserCircle2, Music4 } from 'lucide-react';
+import { Award, Shield, User, UserPlus, QrCode, Sparkles, Trophy, Users, CalendarCheck, LogOut, BarChart3, CreditCard, UserCircle2, Music4, Cake } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePoints } from '../../context/PointsContext';
 import { getStudentBalance } from '../../services/supabase';
@@ -122,6 +122,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   <Music4 className="w-4 h-4 text-indigo-500" /> الفقرة الافتتاحية
                 </button>
                 <button
+                  onClick={() => setActiveTab('servant-birthdays')}
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'servant-birthdays' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <Cake className="w-4 h-4 text-amber-500" /> أعياد الميلاد
+                </button>
+                <button
                   onClick={() => setActiveTab('scanner')}
                   className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
                     activeTab === 'scanner' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -190,6 +198,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   }`}
                 >
                   <Music4 className="w-4 h-4 text-indigo-500" /> الفقرة الافتتاحية
+                </button>
+                <button
+                  onClick={() => setActiveTab('servant-birthdays')}
+                  className={`shrink-0 whitespace-nowrap px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all ${
+                    activeTab === 'servant-birthdays' ? 'bg-white text-sky-700 shadow-sm border border-slate-200/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  }`}
+                >
+                  <Cake className="w-4 h-4 text-amber-500" /> أعياد الميلاد
                 </button>
               </>
             )}

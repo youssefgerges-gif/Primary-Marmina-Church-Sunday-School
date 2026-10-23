@@ -14,14 +14,14 @@ import { usePoints } from '../../context/PointsContext';
 // الشهر ده، عشان الشاشة ما تتزنقش بكارت فاضي.
 const COLLAPSED_COUNT = 4;
 
-function parseBirth(str) {
+export function parseBirth(str) {
   if (!str) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(str));
   if (!m) return null;
   return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
 }
 
-const MONTH_NAMES = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+export const MONTH_NAMES = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
 export default function StudentBirthdays() {
   const { currentUser } = useAuth();

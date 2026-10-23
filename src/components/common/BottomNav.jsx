@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus, BarChart3, CreditCard, UserCircle2, Music4 } from 'lucide-react';
+import { Trophy, Award, QrCode, CalendarCheck, Users, User, UserPlus, BarChart3, CreditCard, UserCircle2, Music4, Cake } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function BottomNav({ activeTab, setActiveTab }) {
@@ -81,6 +81,15 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             >
               <Music4 className="w-5 h-5 mb-0.5" />
               <span className="text-[10px] whitespace-nowrap">الفقرة الافتتاحية</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('servant-birthdays')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'servant-birthdays' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Cake className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">أعياد الميلاد</span>
             </button>
 
             <button
@@ -174,6 +183,15 @@ export default function BottomNav({ activeTab, setActiveTab }) {
             >
               <Music4 className="w-5 h-5 mb-0.5" />
               <span className="text-[10px] whitespace-nowrap">الفقرة الافتتاحية</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('servant-birthdays')}
+              className={`flex flex-shrink-0 flex-col items-center py-1 px-2.5 rounded-xl transition-all ${
+                activeTab === 'servant-birthdays' ? 'text-sky-600 font-extrabold' : 'text-slate-500 font-medium'
+              }`}
+            >
+              <Cake className="w-5 h-5 mb-0.5" />
+              <span className="text-[10px] whitespace-nowrap">أعياد الميلاد</span>
             </button>
             <button
               onClick={() => setActiveTab('scanner')}
